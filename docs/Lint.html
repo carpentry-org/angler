@@ -40,45 +40,13 @@
                     Lint
                 </h1>
                 <div class="module-description">
-                    
-                </div>
-                <div class="binder">
-                    <a class="anchor" href="#*rules*">
-                        <h3 id="*rules*">
-                            *rules*
-                        </h3>
-                    </a>
-                    <div class="description">
-                        def
-                    </div>
-                    <p class="sig">
-                        (Array Rule)
-                    </p>
-                    <span>
-                        
-                    </span>
-                    <p class="doc">
-                        
-                    </p>
-                </div>
-                <div class="binder">
-                    <a class="anchor" href="#-register-builtins">
-                        <h3 id="-register-builtins">
-                            -register-builtins
-                        </h3>
-                    </a>
-                    <div class="description">
-                        def
-                    </div>
-                    <p class="sig">
-                        Int
-                    </p>
-                    <span>
-                        
-                    </span>
-                    <p class="doc">
-                        
-                    </p>
+                    <p>is the linter's core: the rule registry, the AST walker, and the
+public entry points (<code>lint</code>, <code>lint-with</code>, <code>lint-source</code>,
+<code>lint-source-with</code>). Plugin authors interact with it via
+<code>register-rule!</code>. See
+<a href="https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md"><code>WRITING-RULES.md</code></a>
+for the rule-author guide.</p>
+
                 </div>
                 <div class="binder">
                     <a class="anchor" href="#lint">

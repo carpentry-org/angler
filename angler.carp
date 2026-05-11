@@ -31,8 +31,16 @@ into multiple rules.")
    description String
    fn          (Fn [(Ref Located)] (Maybe Diagnostic))])
 
+(doc Lint
+  "is the linter's core: the rule registry, the AST walker, and the
+public entry points (`lint`, `lint-with`, `lint-source`,
+`lint-source-with`). Plugin authors interact with it via
+`register-rule!`. See
+[`WRITING-RULES.md`](https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md)
+for the rule-author guide.")
 (defmodule Lint
   (private *rules*)
+  (hidden  *rules*)
   (def *rules* (the (Array Rule) []))
 
   (doc register-rule! "registers a rule under `name` with a one-line
@@ -483,6 +491,8 @@ names satisfy `keep?`.")
       (Result.Success forms) (Result.Success (walk &forms keep?))
       (Result.Error e)       (Result.Error e)))
 
+  (private -register-builtins)
+  (hidden  -register-builtins)
   (def -register-builtins
     (do
       (register-rule! @"lonely-do"

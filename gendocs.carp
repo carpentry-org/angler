@@ -32,20 +32,18 @@ consumers. See
 
 ### Built-in rules
 
-| Rule | Triggers on |
-|---|---|
-| `lonely-do` | `(do x)` |
-| `empty-do` | `(do)` |
-| `if-with-do` | `(if c (do …) ())`, `(if c () (do …))` |
-| `if-one-branch-empty` | `(if c x ())`, `(if c () x)` (non-do bodies) |
-| `form-with-do` | `(let \\| while \\| when \\| unless ... (do …))` |
-| `when-with-not` | `(when (not c) x)`, `(unless (not c) x)` |
-| `not-equal` | `(not (= a b))` |
-| `double-not` | `(not (not x))` |
-| `set-self` | `(set! x x)` |
-| `try-around-atomic` | `(Parser.try (Parser.string/byte …))` |
-| `non-kebab-case-defn` | `(defn FooBar …)` |
-| `non-pascal-case-defmodule` | `(defmodule my-thing …)` |
+- `lonely-do`, on `(do x)`.
+- `empty-do`, on `(do)`.
+- `if-with-do`, on `(if c (do …) ())` and `(if c () (do …))`.
+- `if-one-branch-empty`, on `(if c x ())` and `(if c () x)` (non-do bodies).
+- `form-with-do`, on `(let / while / when / unless ... (do …))`.
+- `when-with-not`, on `(when (not c) x)` and `(unless (not c) x)`.
+- `not-equal`, on `(not (= a b))`.
+- `double-not`, on `(not (not x))`.
+- `set-self`, on `(set! x x)`.
+- `try-around-atomic`, on `(Parser.try (Parser.string/byte …))`.
+- `non-kebab-case-defn`, on `(defn FooBar …)`.
+- `non-pascal-case-defmodule`, on `(defmodule my-thing …)`.
 
 ### CLI
 

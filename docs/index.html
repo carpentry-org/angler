@@ -58,20 +58,20 @@ consumers. See
 <li><a href="./Rule.html"><code>Rule</code></a>, the registry entry: name, description, and matcher function.</li>
 </ul>
 <h3>Built-in rules</h3>
-<p>| Rule | Triggers on |
-|---|---|
-| <code>lonely-do</code> | <code>(do x)</code> |
-| <code>empty-do</code> | <code>(do)</code> |
-| <code>if-with-do</code> | <code>(if c (do …) ())</code>, <code>(if c () (do …))</code> |
-| <code>if-one-branch-empty</code> | <code>(if c x ())</code>, <code>(if c () x)</code> (non-do bodies) |
-| <code>form-with-do</code> | <code>(let \| while \| when \| unless ... (do …))</code> |
-| <code>when-with-not</code> | <code>(when (not c) x)</code>, <code>(unless (not c) x)</code> |
-| <code>not-equal</code> | <code>(not (= a b))</code> |
-| <code>double-not</code> | <code>(not (not x))</code> |
-| <code>set-self</code> | <code>(set! x x)</code> |
-| <code>try-around-atomic</code> | <code>(Parser.try (Parser.string/byte …))</code> |
-| <code>non-kebab-case-defn</code> | <code>(defn FooBar …)</code> |
-| <code>non-pascal-case-defmodule</code> | <code>(defmodule my-thing …)</code> |</p>
+<ul>
+<li><code>lonely-do</code>, on <code>(do x)</code>.</li>
+<li><code>empty-do</code>, on <code>(do)</code>.</li>
+<li><code>if-with-do</code>, on <code>(if c (do …) ())</code> and <code>(if c () (do …))</code>.</li>
+<li><code>if-one-branch-empty</code>, on <code>(if c x ())</code> and <code>(if c () x)</code> (non-do bodies).</li>
+<li><code>form-with-do</code>, on <code>(let / while / when / unless ... (do …))</code>.</li>
+<li><code>when-with-not</code>, on <code>(when (not c) x)</code> and <code>(unless (not c) x)</code>.</li>
+<li><code>not-equal</code>, on <code>(not (= a b))</code>.</li>
+<li><code>double-not</code>, on <code>(not (not x))</code>.</li>
+<li><code>set-self</code>, on <code>(set! x x)</code>.</li>
+<li><code>try-around-atomic</code>, on <code>(Parser.try (Parser.string/byte …))</code>.</li>
+<li><code>non-kebab-case-defn</code>, on <code>(defn FooBar …)</code>.</li>
+<li><code>non-pascal-case-defmodule</code>, on <code>(defmodule my-thing …)</code>.</li>
+</ul>
 <h3>CLI</h3>
 <ul>
 <li><code>angler FILE [FILE…]</code>, lints every file with every registered rule.</li>
