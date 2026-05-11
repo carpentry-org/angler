@@ -1,0 +1,290 @@
+<!DOCTYPE HTML>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        <div class="content">
+            <div class="logo">
+                <a href="https://github.com/carpentry-org/angler">
+                    <img src="">
+                </a>
+                <div class="title">
+                    angler
+                </div>
+                <div class="index">
+                    <ul>
+                        <li>
+                            <a href="Lint.html">
+                                Lint
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Diagnostic.html">
+                                Diagnostic
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Rule.html">
+                                Rule
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="module">
+                <h1>
+                    Lint
+                </h1>
+                <div class="module-description">
+                    
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#*rules*">
+                        <h3 id="*rules*">
+                            *rules*
+                        </h3>
+                    </a>
+                    <div class="description">
+                        def
+                    </div>
+                    <p class="sig">
+                        (Array Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#-register-builtins">
+                        <h3 id="-register-builtins">
+                            -register-builtins
+                        </h3>
+                    </a>
+                    <div class="description">
+                        def
+                    </div>
+                    <p class="sig">
+                        Int
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#lint">
+                        <h3 id="lint">
+                            lint
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref (Array (Box Located)) a)] (Array Diagnostic))
+                    </p>
+                    <pre class="args">
+                        (lint forms)
+                    </pre>
+                    <p class="doc">
+                        <p>applies every registered rule to every node in <code>forms</code>,
+recursing into compound forms. Returns one <code>Diagnostic</code> per finding.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#lint-source">
+                        <h3 id="lint-source">
+                            lint-source
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref String a)] (Result (Array Diagnostic) ParseErr))
+                    </p>
+                    <pre class="args">
+                        (lint-source src)
+                    </pre>
+                    <p class="doc">
+                        <p>parses <code>src</code> via <code>Reader.parse</code> and lints with
+every registered rule. Returns <code>(Result (Array Diagnostic) ParseErr)</code>
+so a parse failure surfaces distinctly from a clean parse with
+diagnostics.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#lint-source-with">
+                        <h3 id="lint-source-with">
+                            lint-source-with
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref (Fn [(Ref String StaticLifetime)] Bool) a), (Ref String b)] (Result (Array Diagnostic) ParseErr))
+                    </p>
+                    <pre class="args">
+                        (lint-source-with keep? src)
+                    </pre>
+                    <p class="doc">
+                        <p>like <code>lint-source</code>, but only runs rules whose
+names satisfy <code>keep?</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#lint-with">
+                        <h3 id="lint-with">
+                            lint-with
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref (Fn [(Ref String StaticLifetime)] Bool) a), (Ref (Array (Box Located)) b)] (Array Diagnostic))
+                    </p>
+                    <pre class="args">
+                        (lint-with keep? forms)
+                    </pre>
+                    <p class="doc">
+                        <p>like <code>lint</code>, but only runs rules whose names satisfy
+<code>keep?</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#list-rules">
+                        <h3 id="list-rules">
+                            list-rules
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [] (Array Rule))
+                    </p>
+                    <pre class="args">
+                        (list-rules)
+                    </pre>
+                    <p class="doc">
+                        <p>returns a copy of the currently registered rule
+registry. Useful for <code>angler --list-rules</code> and for plugins that want
+to inspect the active rule set.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#lst-head?">
+                        <h3 id="lst-head?">
+                            lst-head?
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Form a), (Ref String b)] Bool)
+                    </p>
+                    <pre class="args">
+                        (lst-head? f name)
+                    </pre>
+                    <p class="doc">
+                        <p>true iff <code>f</code> is <code>(Form.Lst …)</code> whose first child is
+a <code>Form.Sym</code> matching <code>name</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#nth-form">
+                        <h3 id="nth-form">
+                            nth-form
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref (Array (Box Located)) a), Int] (Ref Form a))
+                    </p>
+                    <pre class="args">
+                        (nth-form items i)
+                    </pre>
+                    <p class="doc">
+                        <p>pulls the <code>Form</code> out of the i-th <code>Located</code> child of
+an <code>Array (Box Located)</code>. Most rules want the structural shape, not
+the position, when descending into a compound form's children.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#register-rule!">
+                        <h3 id="register-rule!">
+                            register-rule!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String, String, (Fn [(Ref Located a)] (Maybe Diagnostic))] ())
+                    </p>
+                    <pre class="args">
+                        (register-rule! name description fn)
+                    </pre>
+                    <p class="doc">
+                        <p>registers a rule under <code>name</code> with a one-line
+<code>description</code>. Subsequent runs of <code>Lint.lint</code> / <code>Lint.lint-source</code>
+include it. Built-ins call this at load time; plugins do the same
+after loading angler.</p>
+<p>Caveat: Carp initializes global <code>def</code>s in dependency-graph order,
+not in textual or load order. If your plugin uses a top-level <code>def</code>
+to call <code>register-rule!</code>, its slot in the registry — and therefore
+its slot in the diagnostic output for any one form — is unspecified
+relative to angler's built-ins. Rule firing is still correct;
+only the order of diagnostics on a single node varies. If you need
+strict ordering, register from <code>main</code> instead of from a top-level
+<code>def</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#sym?">
+                        <h3 id="sym?">
+                            sym?
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Form a), (Ref String b)] Bool)
+                    </p>
+                    <pre class="args">
+                        (sym? f name)
+                    </pre>
+                    <p class="doc">
+                        <p>true iff <code>f</code> is a <code>Form.Sym</code> whose dotted name equals
+<code>name</code>. <code>name</code> may itself contain <code>.</code> to match a multi-segment
+symbol — e.g. <code>(sym? f &quot;Parser.try&quot;)</code> matches <code>Parser.try</code>.</p>
+
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

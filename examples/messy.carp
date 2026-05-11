@@ -1,0 +1,3 @@
+(defn FooBar [] 1)
+(let [a 1] (do a a))
+(do x)

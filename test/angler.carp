@@ -1,0 +1,259 @@
+(load "../angler.carp")
+(Project.no-echo)
+(load "Test.carp")
+
+(use-all Test Lint Form)
+
+(defn lint! [src]
+  (Result.unsafe-from-success (Lint.lint-source src)))
+
+(defn no-diag? [src]
+  (Int.= 0 (Array.length &(lint! src))))
+
+(defn has-rule? [src rule]
+  (let-do [diags (lint! src)
+           found false]
+    (for [i 0 (Array.length &diags)]
+      (when (= rule (Diagnostic.rule (Array.unsafe-nth &diags i)))
+        (set! found true)))
+    found))
+
+(defn count-rule [src rule]
+  (let-do [diags (lint! src)
+           n 0]
+    (for [i 0 (Array.length &diags)]
+      (when (= rule (Diagnostic.rule (Array.unsafe-nth &diags i)))
+        (set! n (Int.inc n))))
+    n))
+
+; Fires only on a `MARKER` symbol so it doesn't add noise to other
+; tests' inputs.
+(defn rule-marker [l]
+  (let [f (Located.form l)]
+    (match-ref f
+      (Form.Sym segs)
+        (if (and (Int.= 1 (Array.length segs))
+                 (= (Array.unsafe-nth segs 0) "MARKER"))
+          (Maybe.Just (Diagnostic.init @"marker-rule" @"saw a MARKER"
+                                       (Form.str f)
+                                       @(Info.line (Located.info l))
+                                       @(Info.col  (Located.info l))))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing))))
+
+(defn count-with [keep? src rule]
+  (let-do [diags (Result.unsafe-from-success (Lint.lint-source-with keep? src))
+           n 0]
+    (for [i 0 (Array.length &diags)]
+      (when (= rule (Diagnostic.rule (Array.unsafe-nth &diags i)))
+        (set! n (Int.inc n))))
+    n))
+
+(def -register-test-rule
+  (do (Lint.register-rule! @"marker-rule" @"fires when it sees a MARKER symbol" rule-marker)
+      0))
+
+(defn lint-output [src]
+  (let-do [diags (lint! src)
+           out @""
+           n (Array.length &diags)]
+    (for [i 0 n]
+      (set! out (String.append &out
+                  &(Diagnostic.str (Array.unsafe-nth &diags i)))))
+    out))
+
+(deftest t
+  ; ----------------------------------------------------------------
+  ; lonely-do
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "(do x)" "lonely-do")
+               "fires on (do x)")
+  (assert-false t (has-rule? "(do x y)" "lonely-do")
+                "does not fire on (do x y)")
+  (assert-true t (has-rule? "(let [a 1] (do a))" "lonely-do")
+               "fires on nested (do x) inside let body")
+
+  ; ----------------------------------------------------------------
+  ; if-with-do
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "(if cond (do x y) ())" "if-with-do")
+               "fires on (if cond (do x y) ()) — the (when-do …) desugaring")
+  (assert-false t (has-rule? "(if cond a b)" "if-with-do")
+                "does not fire on plain if/else")
+  (assert-false t (has-rule? "(if cond (println x) (println y))" "if-with-do")
+                "does not fire when branches aren't do-forms")
+  (assert-false t (has-rule? "(if cond (do x) other)" "if-with-do")
+                "does not fire when the else arm is not ()")
+
+  ; ----------------------------------------------------------------
+  ; form-with-do
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "(let [a 1] (do a a))" "form-with-do")
+               "fires on (let [...] (do ...)) — suggest let-do")
+  (assert-true t (has-rule? "(while cond (do x y))" "form-with-do")
+               "fires on (while ... (do ...)) — suggest while-do")
+  (assert-true t (has-rule? "(when cond (do x y))" "form-with-do")
+               "fires on (when ... (do ...)) — suggest when-do")
+  (assert-true t (has-rule? "(unless cond (do x y))" "form-with-do")
+               "fires on (unless ... (do ...)) — suggest unless-do")
+  (assert-false t (has-rule? "(let [a 1] a)" "form-with-do")
+                "does not fire on plain let body")
+  (assert-false t (has-rule? "(let [a 1] (foo a))" "form-with-do")
+                "does not fire when body isn't a do-form")
+  (assert-false t (has-rule? "(Foo.bar x (do y))" "form-with-do")
+                "does not fire on unrelated forms even with do body")
+
+  ; ----------------------------------------------------------------
+  ; try-around-atomic
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "(Parser.try (Parser.string @\"foo\"))"
+                            "try-around-atomic")
+               "fires on Parser.try around Parser.string")
+  (assert-true t (has-rule? "(Parser.try (Parser.byte \\a))"
+                            "try-around-atomic")
+               "fires on Parser.try around Parser.byte")
+  (assert-false t (has-rule? "(Parser.try (Parser.many p))"
+                             "try-around-atomic")
+                "does not fire on Parser.try around non-atomic")
+
+  ; ----------------------------------------------------------------
+  ; non-kebab-case-defn
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "(defn FooBar [] 1)" "non-kebab-case-defn")
+               "fires on PascalCase defn name")
+  (assert-false t (has-rule? "(defn foo-bar [] 1)" "non-kebab-case-defn")
+                "does not fire on kebab-case defn name")
+  (assert-false t (has-rule? "(defn good? [x] true)" "non-kebab-case-defn")
+                "predicate suffix ? is fine")
+
+  ; ----------------------------------------------------------------
+  ; clean source = no diagnostics
+  ; ----------------------------------------------------------------
+  (assert-true t (no-diag? "(defn add [a b] (Int.+ a b))")
+               "clean code yields no diagnostics")
+
+  ; ----------------------------------------------------------------
+  ; multiple findings in one source
+  ; ----------------------------------------------------------------
+  (assert-equal t 2
+                (count-rule
+                  "(do x) (if cond (do y) ())"
+                  "lonely-do")
+                "two lonely-do findings (top level + nested inside if)")
+
+  ; ----------------------------------------------------------------
+  ; diagnostic formatting
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (let [s (lint-output "(do x)")]
+      (and (String.contains-string? &s "lonely-do")
+           (String.contains-string? &s "(do x)")))
+    "Diagnostic.str includes rule name and offending form")
+
+  ; ----------------------------------------------------------------
+  ; comments do not trip up rules
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "; warm-up\n(do x)" "lonely-do")
+               "rules survive top-level comments")
+
+  ; ----------------------------------------------------------------
+  ; diagnostics carry the offending form's start position
+  ; ----------------------------------------------------------------
+  (assert-equal t 1
+                @(Diagnostic.line (Array.unsafe-nth &(lint! "(do x)") 0))
+                "diagnostic line matches form's start line")
+  (assert-equal t 1
+                @(Diagnostic.col (Array.unsafe-nth &(lint! "(do x)") 0))
+                "diagnostic col matches form's start col")
+  (assert-equal t 2
+                @(Diagnostic.line (Array.unsafe-nth &(lint! "\n(do x)") 0))
+                "diagnostic line tracks newlines")
+  (assert-equal t 5
+                @(Diagnostic.col (Array.unsafe-nth &(lint! "    (do x)") 0))
+                "diagnostic col tracks leading whitespace")
+
+  ; ----------------------------------------------------------------
+  ; new rules
+  ; ----------------------------------------------------------------
+  (assert-true t (has-rule? "(do)" "empty-do")
+               "empty-do fires on (do)")
+  (assert-false t (has-rule? "(do x)" "empty-do")
+                "empty-do does not fire on (do x)")
+
+  (assert-true t (has-rule? "(if c x ())" "if-one-branch-empty")
+               "if-one-branch-empty fires on (if c x ())")
+  (assert-true t (has-rule? "(if c () x)" "if-one-branch-empty")
+               "if-one-branch-empty fires on (if c () x)")
+  (assert-false t (has-rule? "(if c (do x) ())" "if-one-branch-empty")
+                "if-one-branch-empty suppresses for (if c (do …) ())")
+  (assert-false t (has-rule? "(if c () (do x))" "if-one-branch-empty")
+                "if-one-branch-empty suppresses for (if c () (do …))")
+  (assert-false t (has-rule? "(if c a b)" "if-one-branch-empty")
+                "if-one-branch-empty does not fire on normal if/else")
+
+  (assert-true t (has-rule? "(if c (do x) ())" "if-with-do")
+               "if-with-do fires on (if c (do …) ()) — when-do desugaring")
+  (assert-true t (has-rule? "(if c () (do x))" "if-with-do")
+               "if-with-do fires on (if c () (do …)) — unless-do desugaring")
+
+  (assert-true t (has-rule? "(when (not c) x)" "when-with-not")
+               "when-with-not fires on (when (not c) x)")
+  (assert-true t (has-rule? "(unless (not c) x)" "when-with-not")
+               "when-with-not fires on (unless (not c) x)")
+  (assert-false t (has-rule? "(when c x)" "when-with-not")
+                "when-with-not does not fire on plain when")
+
+  (assert-true t (has-rule? "(not (= a b))" "not-equal")
+               "not-equal fires on (not (= a b))")
+  (assert-false t (has-rule? "(not foo)" "not-equal")
+                "not-equal does not fire on plain (not foo)")
+
+  (assert-true t (has-rule? "(not (not x))" "double-not")
+               "double-not fires on (not (not x))")
+  (assert-false t (has-rule? "(not x)" "double-not")
+                "double-not does not fire on single not")
+
+  (assert-true t (has-rule? "(set! x x)" "set-self")
+               "set-self fires on (set! x x)")
+  (assert-false t (has-rule? "(set! x y)" "set-self")
+                "set-self does not fire on (set! x y)")
+
+  (assert-true t (has-rule? "(defmodule my-thing)" "non-pascal-case-defmodule")
+               "non-pascal-case-defmodule fires on kebab-case module name")
+  (assert-false t (has-rule? "(defmodule MyThing)" "non-pascal-case-defmodule")
+                "non-pascal-case-defmodule does not fire on PascalCase")
+  (assert-false t (has-rule? "(defmodule CLI)" "non-pascal-case-defmodule")
+                "non-pascal-case-defmodule does not fire on all-caps acronym")
+
+  ; ----------------------------------------------------------------
+  ; registry: list-rules, register-rule!, lint-source-with
+  ; ----------------------------------------------------------------
+  (assert-equal t 13 (Array.length &(Lint.list-rules))
+                "12 built-ins + 1 top-level-registered test rule = 13")
+
+  ; --only filter via predicate: only `lonely-do` fires
+  (assert-equal t 0
+                (count-with &(fn [n] (= n "lonely-do"))
+                            "(defn FooBar [] 1)"
+                            "non-kebab-case-defn")
+                "filter to lonely-do silences other rules")
+  (assert-equal t 1
+                (count-with &(fn [n] (= n "lonely-do"))
+                            "(do x)"
+                            "lonely-do")
+                "filter to lonely-do still fires lonely-do")
+
+  ; --disable filter: every rule except non-kebab-case-defn
+  (assert-equal t 0
+                (count-with &(fn [n] (not (= n "non-kebab-case-defn")))
+                            "(defn FooBar [] 1)"
+                            "non-kebab-case-defn")
+                "disabling non-kebab-case-defn drops it")
+
+  ; register-rule! ran at top-level adds a rule that shows up in walks
+  (assert-equal t 13 (Array.length &(Lint.list-rules))
+                "after top-level register, 13 rules total")
+  (assert-true t (has-rule? "MARKER" "marker-rule")
+               "newly-registered rule fires when its pattern appears")
+  (assert-false t (has-rule? "(defn add [a b] (Int.+ a b))" "marker-rule")
+                "newly-registered rule does not fire elsewhere"))

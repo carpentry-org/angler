@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Carp
+        uses: carpentry-org/setup-carp@v1
+
+      - name: Run tests
+        run: |
+          set -euo pipefail
+          carp -x test/angler.carp
+
+      - name: Build CLI
+        run: carp -b main.carp
+
+      - name: Smoke-test CLI
+        run: |
+          set -euo pipefail
+          echo "(do x)" > /tmp/angler-fixture.carp
+          # Expect exit 1 because there's a finding.
+          if ./out/angler /tmp/angler-fixture.carp; then
+            echo "expected non-zero exit on file with findings" >&2
+            exit 1
+          fi
+
+      - name: Generate docs
+        run: carp -x gendocs.carp

@@ -1,0 +1,525 @@
+(load "git@github.com:carpentry-org/carp-reader@0.2.0")
+
+(doc Diagnostic "is a single lint finding: the rule that fired, a
+human-readable message, the source text of the offending form, and
+the form's start `line` and `col` as captured by the parser.")
+(deftype Diagnostic
+  [rule    String
+   message String
+   context String
+   line    Int
+   col     Int])
+
+(defmodule Diagnostic
+  (doc str "renders a diagnostic as `line:col: [rule] message`
+followed by an indented `at:` line with the offending form's text.")
+  (defn str [d]
+    (fmt "%d:%d: [%s] %s\n  at: %s"
+         @(Diagnostic.line    d)
+         @(Diagnostic.col     d)
+         (Diagnostic.rule     d)
+         (Diagnostic.message  d)
+         (Diagnostic.context  d)))
+  (implements str Diagnostic.str))
+
+(doc Rule "is a named, described lint rule. `fn` takes a `Located`
+node and returns `(Maybe Diagnostic)`. Most rules fire on at most one
+node shape; if you need to emit several diagnostics per node, split
+into multiple rules.")
+(deftype Rule
+  [name        String
+   description String
+   fn          (Fn [(Ref Located)] (Maybe Diagnostic))])
+
+(defmodule Lint
+  (private *rules*)
+  (def *rules* (the (Array Rule) []))
+
+  (doc register-rule! "registers a rule under `name` with a one-line
+`description`. Subsequent runs of `Lint.lint` / `Lint.lint-source`
+include it. Built-ins call this at load time; plugins do the same
+after loading angler.
+
+Caveat: Carp initializes global `def`s in dependency-graph order,
+not in textual or load order. If your plugin uses a top-level `def`
+to call `register-rule!`, its slot in the registry — and therefore
+its slot in the diagnostic output for any one form — is unspecified
+relative to angler's built-ins. Rule firing is still correct;
+only the order of diagnostics on a single node varies. If you need
+strict ordering, register from `main` instead of from a top-level
+`def`.")
+  (defn register-rule! [name description fn]
+    (set! *rules* (Array.push-back @&*rules* (Rule.init name description fn))))
+
+  (doc list-rules "returns a copy of the currently registered rule
+registry. Useful for `angler --list-rules` and for plugins that want
+to inspect the active rule set.")
+  (defn list-rules [] @&*rules*)
+
+  (doc nth-form "pulls the `Form` out of the i-th `Located` child of
+an `Array (Box Located)`. Most rules want the structural shape, not
+the position, when descending into a compound form's children.")
+  (defn nth-form [items i]
+    (Located.form (Box.peek (Array.unsafe-nth items i))))
+
+  (doc sym? "true iff `f` is a `Form.Sym` whose dotted name equals
+`name`. `name` may itself contain `.` to match a multi-segment
+symbol — e.g. `(sym? f \"Parser.try\")` matches `Parser.try`.")
+  (defn sym? [f name]
+    (match-ref f
+      (Form.Sym segs)
+        (let-do [joined @""
+                 n (Array.length segs)]
+          (for [i 0 n]
+            (do (when (Int.> i 0) (set! joined (String.append &joined ".")))
+                (set! joined (String.append &joined (Array.unsafe-nth segs i)))))
+          (= name &joined))
+      _ false))
+
+  (doc lst-head? "true iff `f` is `(Form.Lst …)` whose first child is
+a `Form.Sym` matching `name`.")
+  (defn lst-head? [f name]
+    (match-ref f
+      (Form.Lst items)
+        (and (Int.> (Array.length items) 0)
+             (sym? (nth-form items 0) name))
+      _ false))
+
+  (private kebab-case?)
+  (hidden  kebab-case?)
+  (defn kebab-case? [name]
+    (let-do [ok true]
+      (for [i 0 (String.length name)]
+        (let [c (String.char-at name i)]
+          (when (and (Char.>= c \A) (Char.<= c \Z))
+            (set! ok false))))
+      ok))
+
+  (private pascal-case?)
+  (hidden  pascal-case?)
+  (defn pascal-case? [name]
+    (let-do [n (String.length name)
+             ok true]
+      (if (Int.= 0 n)
+        false
+        (do
+          (let [c0 (String.char-at name 0)]
+            (when (not (and (Char.>= c0 \A) (Char.<= c0 \Z)))
+              (set! ok false)))
+          (for [i 1 n]
+            (let [c (String.char-at name i)]
+              (when (or (Char.= c \-) (Char.= c \_))
+                (set! ok false))))
+          ok))))
+
+  (private not-arg?)
+  (hidden  not-arg?)
+  (defn not-arg? [f]
+    (match-ref f
+      (Form.Lst items)
+        (and (Int.= 2 (Array.length items))
+             (sym? (nth-form items 0) "not"))
+      _ false))
+
+  (private sym-eq?)
+  (hidden  sym-eq?)
+  (defn sym-eq? [a b]
+    (match-ref a
+      (Form.Sym sa)
+        (match-ref b
+          (Form.Sym sb)
+            (and (Int.= (Array.length sa) (Array.length sb))
+                 (let-do [eq true
+                          n  (Array.length sa)]
+                   (for [i 0 n]
+                     (when (not (= (Array.unsafe-nth sa i)
+                                   (Array.unsafe-nth sb i)))
+                       (set! eq false)))
+                   eq))
+          _ false)
+      _ false))
+
+  (private dx)
+  (hidden  dx)
+  (defn dx [info rule msg ctx]
+    (Maybe.Just (Diagnostic.init @rule @msg ctx
+                                 @(Info.line info)
+                                 @(Info.col  info))))
+
+  (private empty-list?)
+  (hidden  empty-list?)
+  (defn empty-list? [f]
+    (match-ref f
+      (Form.Lst items) (Int.= 0 (Array.length items))
+      _ false))
+
+  (private form-with-do-variant)
+  (hidden  form-with-do-variant)
+  (defn form-with-do-variant [name]
+    (cond
+      (= name "let")    (Maybe.Just @"let-do")
+      (= name "while")  (Maybe.Just @"while-do")
+      (= name "when")   (Maybe.Just @"when-do")
+      (= name "unless") (Maybe.Just @"unless-do")
+      (Maybe.Nothing)))
+
+  (private rule-lonely-do)
+  (hidden  rule-lonely-do)
+  (defn rule-lonely-do [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 2 (Array.length items))
+                   (sym? (nth-form items 0) "do"))
+            (dx info "lonely-do" "(do x) is just x" (Form.str f))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-if-with-do)
+  (hidden  rule-if-with-do)
+  (defn rule-if-with-do [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 4 (Array.length items))
+                   (sym? (nth-form items 0) "if"))
+            (let [then-form (nth-form items 2)
+                  else-form (nth-form items 3)]
+              (cond
+                (and (lst-head? then-form "do") (empty-list? else-form))
+                  (dx info "if-with-do"
+                      "(if cond (do ...) ()) can be (when-do cond ...)"
+                      (Form.str f))
+                (and (empty-list? then-form) (lst-head? else-form "do"))
+                  (dx info "if-with-do"
+                      "(if cond () (do ...)) can be (unless-do cond ...)"
+                      (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-form-with-do)
+  (hidden  rule-form-with-do)
+  (defn rule-form-with-do [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (Int.= 3 (Array.length items))
+            (let [head (nth-form items 0)
+                  body (nth-form items 2)]
+              (match-ref head
+                (Form.Sym segs)
+                  (if (and (Int.= 1 (Array.length segs))
+                           (lst-head? body "do"))
+                    (let [name (Array.unsafe-nth segs 0)
+                          sugg (form-with-do-variant name)]
+                      (match sugg
+                        (Maybe.Just variant)
+                          (dx info "form-with-do"
+                              &(fmt "(%s ... (do ...)) can be (%s ... ...)" name &variant)
+                              (Form.str f))
+                        (Maybe.Nothing) (Maybe.Nothing)))
+                    (Maybe.Nothing))
+                _ (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-try-around-atomic)
+  (hidden  rule-try-around-atomic)
+  (defn rule-try-around-atomic [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 2 (Array.length items))
+                   (sym? (nth-form items 0) "Parser.try"))
+            (let [arg (nth-form items 1)]
+              (if (or (lst-head? arg "Parser.string")
+                      (lst-head? arg "Parser.byte"))
+                (dx info "try-around-atomic"
+                    "Parser.string / Parser.byte are atomic; the try is redundant"
+                    (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-non-kebab-case-defn)
+  (hidden  rule-non-kebab-case-defn)
+  (defn rule-non-kebab-case-defn [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.>= (Array.length items) 2)
+                   (sym? (nth-form items 0) "defn"))
+            (let [name-form (nth-form items 1)]
+              (match-ref name-form
+                (Form.Sym segs)
+                  (if (Int.= 1 (Array.length segs))
+                    (let [name (Array.unsafe-nth segs 0)]
+                      (if (not (kebab-case? name))
+                        (dx info "non-kebab-case-defn"
+                            &(fmt "defn name '%s' has uppercase letters; Carp convention is kebab-case" name)
+                            (Form.str f))
+                        (Maybe.Nothing)))
+                    (Maybe.Nothing))
+                _ (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-non-pascal-case-defmodule)
+  (hidden  rule-non-pascal-case-defmodule)
+  (defn rule-non-pascal-case-defmodule [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.>= (Array.length items) 2)
+                   (sym? (nth-form items 0) "defmodule"))
+            (let [name-form (nth-form items 1)]
+              (match-ref name-form
+                (Form.Sym segs)
+                  (if (Int.= 1 (Array.length segs))
+                    (let [name (Array.unsafe-nth segs 0)]
+                      (if (not (pascal-case? name))
+                        (dx info "non-pascal-case-defmodule"
+                            &(fmt "defmodule name '%s' should be PascalCase" name)
+                            (Form.str f))
+                        (Maybe.Nothing)))
+                    (Maybe.Nothing))
+                _ (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-not-equal)
+  (hidden  rule-not-equal)
+  (defn rule-not-equal [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 2 (Array.length items))
+                   (sym? (nth-form items 0) "not"))
+            (match-ref (nth-form items 1)
+              (Form.Lst inner)
+                (if (and (Int.= 3 (Array.length inner))
+                         (sym? (nth-form inner 0) "="))
+                  (dx info "not-equal"
+                      "(not (= a b)) is just (/= a b)"
+                      (Form.str f))
+                  (Maybe.Nothing))
+              _ (Maybe.Nothing))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-double-not)
+  (hidden  rule-double-not)
+  (defn rule-double-not [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 2 (Array.length items))
+                   (sym? (nth-form items 0) "not"))
+            (match-ref (nth-form items 1)
+              (Form.Lst inner)
+                (if (and (Int.= 2 (Array.length inner))
+                         (sym? (nth-form inner 0) "not"))
+                  (dx info "double-not"
+                      "(not (not x)) is just x"
+                      (Form.str f))
+                  (Maybe.Nothing))
+              _ (Maybe.Nothing))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-if-one-branch-empty)
+  (hidden  rule-if-one-branch-empty)
+  (defn rule-if-one-branch-empty [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 4 (Array.length items))
+                   (sym? (nth-form items 0) "if"))
+            (let [then-form (nth-form items 2)
+                  else-form (nth-form items 3)]
+              (cond
+                (and (empty-list? else-form)
+                     (not (lst-head? then-form "do")))
+                  (dx info "if-one-branch-empty"
+                      "(if cond x ()) can be (when cond x)"
+                      (Form.str f))
+                (and (empty-list? then-form)
+                     (not (lst-head? else-form "do")))
+                  (dx info "if-one-branch-empty"
+                      "(if cond () x) can be (unless cond x)"
+                      (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-when-with-not)
+  (hidden  rule-when-with-not)
+  (defn rule-when-with-not [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items))
+                   (not-arg? (nth-form items 1)))
+            (let [head (nth-form items 0)]
+              (cond
+                (sym? head "when")
+                  (dx info "when-with-not"
+                      "(when (not c) x) can be (unless c x)"
+                      (Form.str f))
+                (sym? head "unless")
+                  (dx info "when-with-not"
+                      "(unless (not c) x) can be (when c x)"
+                      (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-empty-do)
+  (hidden  rule-empty-do)
+  (defn rule-empty-do [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 1 (Array.length items))
+                   (sym? (nth-form items 0) "do"))
+            (dx info "empty-do" "(do) has no body" (Form.str f))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-set-self)
+  (hidden  rule-set-self)
+  (defn rule-set-self [l]
+    (let [f    (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items))
+                   (and (sym? (nth-form items 0) "set!")
+                        (sym-eq? (nth-form items 1) (nth-form items 2))))
+            (dx info "set-self"
+                "(set! x x) is a no-op"
+                (Form.str f))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private push-maybe!)
+  (hidden  push-maybe!)
+  (defn push-maybe! [acc m]
+    (match m
+      (Maybe.Just d)  (Array.push-back acc d)
+      (Maybe.Nothing) acc))
+
+  (private extend!)
+  (hidden  extend!)
+  (defn extend! [acc others]
+    (let-do [out acc
+             n   (Array.length &others)]
+      (for [i 0 n]
+        (set! out (Array.push-back out @(Array.unsafe-nth &others i))))
+      out))
+
+  (private lint-form)
+  (hidden  lint-form)
+  (defn lint-form [l keep?]
+    (let-do [acc (the (Array Diagnostic) [])
+             n   (Array.length &*rules*)]
+      (for [i 0 n]
+        (let-do [r (Array.unsafe-nth &*rules* i)]
+          (when (~keep? (Rule.name r))
+            (set! acc (push-maybe! acc (~(Rule.fn r) l))))))
+      acc))
+
+  (private walk)
+  (hidden  walk)
+  (defn walk [forms keep?]
+    (let-do [acc (the (Array Diagnostic) [])
+             n   (Array.length forms)]
+      (for [i 0 n]
+        (let-do [l (Box.peek (Array.unsafe-nth forms i))]
+          (set! acc (extend! acc (lint-form l keep?)))
+          (match-ref (Located.form l)
+            (Form.Lst items)       (set! acc (extend! acc (walk items keep?)))
+            (Form.Arr items)       (set! acc (extend! acc (walk items keep?)))
+            (Form.StaticArr items) (set! acc (extend! acc (walk items keep?)))
+            (Form.Dict items)      (set! acc (extend! acc (walk items keep?)))
+            _ ())))
+      acc))
+
+  (doc lint "applies every registered rule to every node in `forms`,
+recursing into compound forms. Returns one `Diagnostic` per finding.")
+  (defn lint [forms]
+    (walk forms &(fn [_] true)))
+
+  (doc lint-with "like `lint`, but only runs rules whose names satisfy
+`keep?`.")
+  (defn lint-with [keep? forms]
+    (walk forms keep?))
+
+  (doc lint-source "parses `src` via `Reader.parse` and lints with
+every registered rule. Returns `(Result (Array Diagnostic) ParseErr)`
+so a parse failure surfaces distinctly from a clean parse with
+diagnostics.")
+  (defn lint-source [src]
+    (match (Reader.parse src)
+      (Result.Success forms) (Result.Success (walk &forms &(fn [_] true)))
+      (Result.Error e)       (Result.Error e)))
+
+  (doc lint-source-with "like `lint-source`, but only runs rules whose
+names satisfy `keep?`.")
+  (defn lint-source-with [keep? src]
+    (match (Reader.parse src)
+      (Result.Success forms) (Result.Success (walk &forms keep?))
+      (Result.Error e)       (Result.Error e)))
+
+  (def -register-builtins
+    (do
+      (register-rule! @"lonely-do"
+                      @"(do x) is just x"
+                      rule-lonely-do)
+      (register-rule! @"empty-do"
+                      @"(do) has no body"
+                      rule-empty-do)
+      (register-rule! @"if-with-do"
+                      @"(if cond (do …) ()) → (when-do …); (if cond () (do …)) → (unless-do …)"
+                      rule-if-with-do)
+      (register-rule! @"if-one-branch-empty"
+                      @"(if cond x ()) → (when cond x); (if cond () x) → (unless cond x)"
+                      rule-if-one-branch-empty)
+      (register-rule! @"form-with-do"
+                      @"(let|while|when|unless ... (do ...)) should use the matching -do variant"
+                      rule-form-with-do)
+      (register-rule! @"when-with-not"
+                      @"(when (not c) x) → (unless c x); (unless (not c) x) → (when c x)"
+                      rule-when-with-not)
+      (register-rule! @"not-equal"
+                      @"(not (= a b)) is just (/= a b)"
+                      rule-not-equal)
+      (register-rule! @"double-not"
+                      @"(not (not x)) is just x"
+                      rule-double-not)
+      (register-rule! @"set-self"
+                      @"(set! x x) is a no-op"
+                      rule-set-self)
+      (register-rule! @"try-around-atomic"
+                      @"Parser.try around Parser.string/Parser.byte is redundant"
+                      rule-try-around-atomic)
+      (register-rule! @"non-kebab-case-defn"
+                      @"defn names should be kebab-case"
+                      rule-non-kebab-case-defn)
+      (register-rule! @"non-pascal-case-defmodule"
+                      @"defmodule names should be PascalCase"
+                      rule-non-pascal-case-defmodule)
+      0))
+)

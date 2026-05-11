@@ -1,0 +1,88 @@
+<!DOCTYPE HTML>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        <div class="content">
+            <a href="https://github.com/carpentry-org/angler">
+                <div class="logo">
+                    <img src="" alt="Logo">
+                    <div class="index">
+                        <ul>
+                            <li>
+                                <a href="Lint.html">
+                                    Lint
+                                </a>
+                            </li>
+                            <li>
+                                <a href="Diagnostic.html">
+                                    Diagnostic
+                                </a>
+                            </li>
+                            <li>
+                                <a href="Rule.html">
+                                    Rule
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div>
+                    <h1>
+                        angler
+                    </h1>
+                    <p>A pluggable linter for Carp source.
+Built on
+<a href="https://github.com/carpentry-org/carp-reader"><code>carpentry-org/carp-reader</code></a>
+and
+<a href="https://github.com/carpentry-org/parsec"><code>carpentry-org/parsec</code></a>.</p>
+<p>Most users invoke <code>angler</code> as a CLI (<code>angler FILE…</code>). The library
+surface is documented here for plugin authors and programmatic
+consumers. See
+<a href="https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md">the documentation on writing rules</a>.</p>
+<pre><code>(load &quot;git@github.com:carpentry-org/angler@0.1.0&quot;)
+
+(match (Lint.lint-source &quot;(do x)&quot;)
+  (Result.Success diags) (for [i 0 (Array.length &amp;diags)]
+                           (IO.println &amp;(Diagnostic.str (Array.unsafe-nth &amp;diags i))))
+  (Result.Error e)       (IO.errorln &amp;(Parser.format-error &amp;e)))
+</code></pre>
+<h3>Modules</h3>
+<ul>
+<li><a href="./Lint.html"><code>Lint</code></a>, the rule registry, walker, and public entry points (<code>lint</code>, <code>lint-with</code>, <code>lint-source</code>, <code>lint-source-with</code>, <code>register-rule!</code>, <code>list-rules</code>).</li>
+<li><a href="./Diagnostic.html"><code>Diagnostic</code></a>, one finding's data and renderer (<code>line:col: [rule] message</code>).</li>
+<li><a href="./Rule.html"><code>Rule</code></a>, the registry entry: name, description, and matcher function.</li>
+</ul>
+<h3>Built-in rules</h3>
+<p>| Rule | Triggers on |
+|---|---|
+| <code>lonely-do</code> | <code>(do x)</code> |
+| <code>empty-do</code> | <code>(do)</code> |
+| <code>if-with-do</code> | <code>(if c (do …) ())</code>, <code>(if c () (do …))</code> |
+| <code>if-one-branch-empty</code> | <code>(if c x ())</code>, <code>(if c () x)</code> (non-do bodies) |
+| <code>form-with-do</code> | <code>(let \| while \| when \| unless ... (do …))</code> |
+| <code>when-with-not</code> | <code>(when (not c) x)</code>, <code>(unless (not c) x)</code> |
+| <code>not-equal</code> | <code>(not (= a b))</code> |
+| <code>double-not</code> | <code>(not (not x))</code> |
+| <code>set-self</code> | <code>(set! x x)</code> |
+| <code>try-around-atomic</code> | <code>(Parser.try (Parser.string/byte …))</code> |
+| <code>non-kebab-case-defn</code> | <code>(defn FooBar …)</code> |
+| <code>non-pascal-case-defmodule</code> | <code>(defmodule my-thing …)</code> |</p>
+<h3>CLI</h3>
+<ul>
+<li><code>angler FILE [FILE…]</code>, lints every file with every registered rule.</li>
+<li><code>--only RULES</code>, comma-separated allow-list.</li>
+<li><code>--disable RULES</code>, comma-separated deny-list.</li>
+<li><code>--list-rules</code>, prints the registry and exits.</li>
+<li><code>-h</code>, <code>--help</code>, prints usage.</li>
+</ul>
+
+                </div>
+            </a>
+        </div>
+    </body>
+</html>

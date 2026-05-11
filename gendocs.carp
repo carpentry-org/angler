@@ -1,0 +1,59 @@
+(load "angler.carp")
+
+(Project.config "title" "angler")
+(Project.config "docs-directory" "./docs/")
+(Project.config "docs-logo" "")
+(Project.config "docs-url" "https://github.com/carpentry-org/angler")
+(Project.config "docs-styling" "../style.css")
+(Project.config "docs-prelude" "A pluggable linter for Carp source.
+Built on
+[`carpentry-org/carp-reader`](https://github.com/carpentry-org/carp-reader)
+and
+[`carpentry-org/parsec`](https://github.com/carpentry-org/parsec).
+
+Most users invoke `angler` as a CLI (`angler FILE…`). The library
+surface is documented here for plugin authors and programmatic
+consumers. See
+[the documentation on writing rules](https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md).
+
+```
+(load \"git@github.com:carpentry-org/angler@0.1.0\")
+
+(match (Lint.lint-source \"(do x)\")
+  (Result.Success diags) (for [i 0 (Array.length &diags)]
+                           (IO.println &(Diagnostic.str (Array.unsafe-nth &diags i))))
+  (Result.Error e)       (IO.errorln &(Parser.format-error &e)))
+```
+
+### Modules
+- [`Lint`](./Lint.html), the rule registry, walker, and public entry points (`lint`, `lint-with`, `lint-source`, `lint-source-with`, `register-rule!`, `list-rules`).
+- [`Diagnostic`](./Diagnostic.html), one finding's data and renderer (`line:col: [rule] message`).
+- [`Rule`](./Rule.html), the registry entry: name, description, and matcher function.
+
+### Built-in rules
+
+| Rule | Triggers on |
+|---|---|
+| `lonely-do` | `(do x)` |
+| `empty-do` | `(do)` |
+| `if-with-do` | `(if c (do …) ())`, `(if c () (do …))` |
+| `if-one-branch-empty` | `(if c x ())`, `(if c () x)` (non-do bodies) |
+| `form-with-do` | `(let \\| while \\| when \\| unless ... (do …))` |
+| `when-with-not` | `(when (not c) x)`, `(unless (not c) x)` |
+| `not-equal` | `(not (= a b))` |
+| `double-not` | `(not (not x))` |
+| `set-self` | `(set! x x)` |
+| `try-around-atomic` | `(Parser.try (Parser.string/byte …))` |
+| `non-kebab-case-defn` | `(defn FooBar …)` |
+| `non-pascal-case-defmodule` | `(defmodule my-thing …)` |
+
+### CLI
+
+- `angler FILE [FILE…]`, lints every file with every registered rule.
+- `--only RULES`, comma-separated allow-list.
+- `--disable RULES`, comma-separated deny-list.
+- `--list-rules`, prints the registry and exits.
+- `-h`, `--help`, prints usage.")
+
+(save-docs Lint Diagnostic Rule)
+(defn main [] (System.system "mv ./docs/angler_index.html ./docs/index.html"))

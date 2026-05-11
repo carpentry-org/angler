@@ -1,0 +1,392 @@
+<!DOCTYPE HTML>
+
+<html>
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0">
+        <link rel="stylesheet" href="../style.css">
+    </head>
+    <body>
+        <div class="content">
+            <div class="logo">
+                <a href="https://github.com/carpentry-org/angler">
+                    <img src="">
+                </a>
+                <div class="title">
+                    angler
+                </div>
+                <div class="index">
+                    <ul>
+                        <li>
+                            <a href="Lint.html">
+                                Lint
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Diagnostic.html">
+                                Diagnostic
+                            </a>
+                        </li>
+                        <li>
+                            <a href="Rule.html">
+                                Rule
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="module">
+                <h1>
+                    Rule
+                </h1>
+                <div class="module-description">
+                    <p>is a named, described lint rule. <code>fn</code> takes a <code>Located</code>
+node and returns <code>(Maybe Diagnostic)</code>. Most rules fire on at most one
+node shape; if you need to emit several diagnostics per node, split
+into multiple rules.</p>
+
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#copy">
+                        <h3 id="copy">
+                            copy
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a)] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>copies a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#delete">
+                        <h3 id="delete">
+                            delete
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule] ())
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>deletes a <code>Rule</code>. Should usually not be called manually.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#description">
+                        <h3 id="description">
+                            description
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a)] (Ref String a))
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>gets the <code>description</code> property of a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#fn">
+                        <h3 id="fn">
+                            fn
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a)] (Ref (Fn [(Ref Located b)] (Maybe Diagnostic)) a))
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>gets the <code>fn</code> property of a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#init">
+                        <h3 id="init">
+                            init
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [String, String, (Fn [(Ref Located a)] (Maybe Diagnostic))] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>creates a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#name">
+                        <h3 id="name">
+                            name
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a)] (Ref String a))
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>gets the <code>name</code> property of a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#prn">
+                        <h3 id="prn">
+                            prn
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a)] String)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>converts a <code>Rule</code> to a string.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#set-description">
+                        <h3 id="set-description">
+                            set-description
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule, String] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>sets the <code>description</code> property of a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#set-description!">
+                        <h3 id="set-description!">
+                            set-description!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a), String] ())
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>sets the <code>description</code> property of a <code>Rule</code> in place.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#set-fn">
+                        <h3 id="set-fn">
+                            set-fn
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule, (Fn [(Ref Located a)] (Maybe Diagnostic))] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>sets the <code>fn</code> property of a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#set-fn!">
+                        <h3 id="set-fn!">
+                            set-fn!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a), (Fn [(Ref Located b)] (Maybe Diagnostic))] ())
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>sets the <code>fn</code> property of a <code>Rule</code> in place.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#set-name">
+                        <h3 id="set-name">
+                            set-name
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule, String] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>sets the <code>name</code> property of a <code>Rule</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#set-name!">
+                        <h3 id="set-name!">
+                            set-name!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a), String] ())
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>sets the <code>name</code> property of a <code>Rule</code> in place.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#str">
+                        <h3 id="str">
+                            str
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref Rule a)] String)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>converts a <code>Rule</code> to a string.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#update-description">
+                        <h3 id="update-description">
+                            update-description
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule, (Ref (Fn [String] String a) b)] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>updates the <code>description</code> property of a <code>Rule</code> using a function <code>f</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#update-fn">
+                        <h3 id="update-fn">
+                            update-fn
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule, (Ref (Fn [(Fn [(Ref Located a)] (Maybe Diagnostic))] (Fn [(Ref Located a)] (Maybe Diagnostic)) b) c)] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>updates the <code>fn</code> property of a <code>Rule</code> using a function <code>f</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#update-name">
+                        <h3 id="update-name">
+                            update-name
+                        </h3>
+                    </a>
+                    <div class="description">
+                        instantiate
+                    </div>
+                    <p class="sig">
+                        (Fn [Rule, (Ref (Fn [String] String a) b)] Rule)
+                    </p>
+                    <span>
+                        
+                    </span>
+                    <p class="doc">
+                        <p>updates the <code>name</code> property of a <code>Rule</code> using a function <code>f</code>.</p>
+
+                    </p>
+                </div>
+            </div>
+        </div>
+    </body>
+</html>

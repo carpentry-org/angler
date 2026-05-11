@@ -1,0 +1,101 @@
+(load "angler.carp")
+
+(Project.config "title" "angler")
+
+(private print-diags!)
+(hidden  print-diags!)
+(defn print-diags! [path diags]
+  (for [i 0 (Array.length diags)]
+    (let [d (Array.unsafe-nth diags i)]
+      (IO.println &(fmt "%s:%s" path &(Diagnostic.str d))))))
+
+(private lint-file!)
+(hidden  lint-file!)
+(defn lint-file! [path keep?]
+  (match (IO.read->EOF path)
+    (Result.Error e)
+      (do (IO.errorln &(fmt "%s: cannot read file: %s" path &e))
+          1)
+    (Result.Success src)
+      (match (Lint.lint-source-with keep? &src)
+        (Result.Error pe)
+          (do (IO.errorln
+                &(fmt "%s: parse error: %s" path &(Parser.format-error &pe)))
+              1)
+        (Result.Success diags)
+          (do (print-diags! path &diags)
+              (if (Int.= 0 (Array.length &diags)) 0 1)))))
+
+(private print-help!)
+(hidden  print-help!)
+(defn print-help! []
+  (do (IO.println "usage: angler [OPTIONS] FILE [FILE...]")
+      (IO.println "")
+      (IO.println "options:")
+      (IO.println "  --only RULES        comma-separated allow-list")
+      (IO.println "  --disable RULES     comma-separated deny-list")
+      (IO.println "  --list-rules        print registered rules and exit")
+      (IO.println "  -h, --help          show this help")))
+
+(private print-rules!)
+(hidden  print-rules!)
+(defn print-rules! []
+  (let-do [rs (Lint.list-rules)
+           n  (Array.length &rs)]
+    (for [i 0 n]
+      (let [r (Array.unsafe-nth &rs i)]
+        (IO.println &(fmt "%-24s %s"
+                          (Rule.name r)
+                          (Rule.description r)))))))
+
+(private keep?)
+(hidden  keep?)
+(defn keep? [only disable name]
+  (and (or (Int.= 0 (Array.length only))
+           (Array.contains? only name))
+       (not (Array.contains? disable name))))
+
+(defn main []
+  (let-do [argc        (StaticArray.length &System.args)
+           only-set    (the (Array String) [])
+           disable-set (the (Array String) [])
+           files       (the (Array String) [])
+           list-rules  false
+           show-help   false
+           i           1]
+    (while (Int.< i argc)
+      (let-do [a (StaticArray.unsafe-nth &System.args i)]
+        (cond
+          (or (= a "-h") (= a "--help"))
+            (set! show-help true)
+          (= a "--list-rules")
+            (set! list-rules true)
+          (= a "--only")
+            (do (set! i (Int.inc i))
+                (when (Int.< i argc)
+                  (set! only-set (String.split-by
+                                   (StaticArray.unsafe-nth &System.args i)
+                                   &[\,]))))
+          (= a "--disable")
+            (do (set! i (Int.inc i))
+                (when (Int.< i argc)
+                  (set! disable-set (String.split-by
+                                      (StaticArray.unsafe-nth &System.args i)
+                                      &[\,]))))
+          (set! files (Array.push-back files @a)))
+        (set! i (Int.inc i))))
+
+    (when show-help  (do (print-help!)  (System.exit 0)))
+    (when list-rules (do (print-rules!) (System.exit 0)))
+    (when (Int.= 0 (Array.length &files))
+      (do (IO.errorln "usage: angler [OPTIONS] FILE [FILE...]")
+          (System.exit 2)))
+
+    (let-do [code 0]
+      (for [j 0 (Array.length &files)]
+        (let [path (Array.unsafe-nth &files j)
+              rc   (lint-file! path
+                               &(fn [name] (keep? &only-set &disable-set name)))]
+          (when (Int.> rc code) (set! code rc))))
+      (System.exit code)
+      ())))
