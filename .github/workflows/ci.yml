@@ -37,5 +37,12 @@ jobs:
             exit 1
           fi
 
+      - name: Lint self
+        run: |
+          ./out/angler $(find . -name '*.carp' \
+            -not -path './out/*' \
+            -not -path './docs/*' \
+            -not -path './examples/*')
+
       - name: Generate docs
         run: carp -x gendocs.carp

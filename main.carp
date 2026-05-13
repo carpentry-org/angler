@@ -85,17 +85,17 @@
           (set! files (Array.push-back files @a)))
         (set! i (Int.inc i))))
 
-    (when show-help  (do (print-help!)  (System.exit 0)))
-    (when list-rules (do (print-rules!) (System.exit 0)))
-    (when (Int.= 0 (Array.length &files))
-      (do (IO.errorln "usage: angler [OPTIONS] FILE [FILE...]")
-          (System.exit 2)))
+    (when-do show-help  (print-help!)  (System.exit 0))
+    (when-do list-rules (print-rules!) (System.exit 0))
+    (when-do (Int.= 0 (Array.length &files))
+      (IO.errorln "usage: angler [OPTIONS] FILE [FILE...]")
+      (System.exit 2))
 
-    (let-do [code 0]
+    (let-do [code  0
+             pred? (fn [name] (keep? &only-set &disable-set name))]
       (for [j 0 (Array.length &files)]
         (let [path (Array.unsafe-nth &files j)
-              rc   (lint-file! path
-                               &(fn [name] (keep? &only-set &disable-set name)))]
+              rc   (lint-file! path &pred?)]
           (when (Int.> rc code) (set! code rc))))
       (System.exit code)
       ())))

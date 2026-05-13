@@ -245,7 +245,7 @@
 
   ; --disable filter: every rule except non-kebab-case-defn
   (assert-equal t 0
-                (count-with &(fn [n] (not (= n "non-kebab-case-defn")))
+                (count-with &(fn [n] (/= n "non-kebab-case-defn"))
                             "(defn FooBar [] 1)"
                             "non-kebab-case-defn")
                 "disabling non-kebab-case-defn drops it")

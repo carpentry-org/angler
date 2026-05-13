@@ -1,4 +1,4 @@
-(load "git@github.com:carpentry-org/carp-reader@0.2.0")
+(load "git@github.com:carpentry-org/carp-reader@0.3.0")
 
 (doc Diagnostic "is a single lint finding: the rule that fired, a
 human-readable message, the source text of the offending form, and
@@ -112,7 +112,7 @@ a `Form.Sym` matching `name`.")
         false
         (do
           (let [c0 (String.char-at name 0)]
-            (when (not (and (Char.>= c0 \A) (Char.<= c0 \Z)))
+            (unless (and (Char.>= c0 \A) (Char.<= c0 \Z))
               (set! ok false)))
           (for [i 1 n]
             (let [c (String.char-at name i)]
@@ -140,8 +140,8 @@ a `Form.Sym` matching `name`.")
                  (let-do [eq true
                           n  (Array.length sa)]
                    (for [i 0 n]
-                     (when (not (= (Array.unsafe-nth sa i)
-                                   (Array.unsafe-nth sb i)))
+                     (when (/= (Array.unsafe-nth sa i)
+                               (Array.unsafe-nth sb i))
                        (set! eq false)))
                    eq))
           _ false)
