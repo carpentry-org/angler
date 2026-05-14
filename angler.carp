@@ -3,7 +3,11 @@
 (doc Diagnostic "is a single lint finding: the rule that fired, a
 human-readable message, the source text of the offending form, and
 the form's start `line` and `col` as captured by the parser.")
-(deftype Diagnostic [rule String message String context String line Int col Int])
+(deftype Diagnostic [rule String
+                     message String
+                     context String
+                     line Int
+                     col Int])
 
 (defmodule Diagnostic
   (doc str "renders a diagnostic as `line:col: [rule] message`
@@ -18,7 +22,9 @@ node and returns `(Maybe Diagnostic)`. Most rules fire on at most one
 node shape; if you need to emit several diagnostics per node, split
 into multiple rules.")
 (deftype Rule
-  [name String description String fn (Fn [(Ref Located)] (Maybe Diagnostic))])
+  [name String
+   description String
+   fn (Fn [(Ref Located)] (Maybe Diagnostic))])
 
 (doc Lint "is the linter's core: the rule registry, the AST walker, and the
 public entry points (`lint`, `lint-with`, `lint-source`,
