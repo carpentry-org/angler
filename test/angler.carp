@@ -32,11 +32,12 @@
       (Form.Sym segs)
         (if (and (Int.= 1 (Array.length segs))
                  (= (Array.unsafe-nth segs 0) "MARKER"))
-          (Maybe.Just (Diagnostic.init @"marker-rule"
-              @"saw a MARKER"
-              (Form.str f)
-              @(Info.line (Located.info l))
-              @(Info.col (Located.info l))))
+          (Maybe.Just
+            (Diagnostic.init @"marker-rule"
+                             @"saw a MARKER"
+                             (Form.str f)
+                             @(Info.line (Located.info l))
+                             @(Info.col (Located.info l))))
           (Maybe.Nothing))
       _ (Maybe.Nothing))))
 
@@ -51,8 +52,8 @@
 (def -register-test-rule
   (do
     (Lint.register-rule! @"marker-rule"
-      @"fires when it sees a MARKER symbol"
-      rule-marker)
+                         @"fires when it sees a MARKER symbol"
+                         rule-marker)
     0))
 
 (defn lint-output [src]

@@ -19,9 +19,8 @@
       (match (Lint.lint-source-with keep? &src)
         (Result.Error pe)
           (do
-            (IO.errorln &(fmt "%s: parse error: %s"
-                path
-                &(Parser.format-error &pe)))
+            (IO.errorln
+              &(fmt "%s: parse error: %s" path &(Parser.format-error &pe)))
             1)
         (Result.Success diags)
           (do
@@ -52,8 +51,9 @@
 (private keep?)
 (hidden keep?)
 (defn keep? [only disable name]
-  (and (or (Int.= 0 (Array.length only)) (Array.contains? only name))
-       (not (Array.contains? disable name))))
+  (and
+    (or (Int.= 0 (Array.length only)) (Array.contains? only name))
+    (not (Array.contains? disable name))))
 
 (defn main []
   (let-do [argc (StaticArray.length &System.args)
@@ -73,13 +73,15 @@
               (set! i (Int.inc i))
               (when (Int.< i argc)
                 (set! only-set
-                  (String.split-by (StaticArray.unsafe-nth &System.args i) &[\,]))))
+                      (String.split-by (StaticArray.unsafe-nth &System.args i)
+                                       &[\,]))))
           (= a "--disable")
             (do
               (set! i (Int.inc i))
               (when (Int.< i argc)
                 (set! disable-set
-                  (String.split-by (StaticArray.unsafe-nth &System.args i) &[\,]))))
+                      (String.split-by (StaticArray.unsafe-nth &System.args i)
+                                       &[\,]))))
           (set! files (Array.push-back files @a)))
         (set! i (Int.inc i))))
 
