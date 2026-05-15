@@ -30,12 +30,9 @@
   (let [f (Located.form l)]
     (match-ref f
       (Form.Sym segs)
-        (if (and
-            (Int.= 1 (Array.length segs))
-            (= (Array.unsafe-nth segs 0) "MARKER"))
-          (Maybe.Just
-            (Diagnostic.init
-              @"marker-rule"
+        (if (and (Int.= 1 (Array.length segs))
+                 (= (Array.unsafe-nth segs 0) "MARKER"))
+          (Maybe.Just (Diagnostic.init @"marker-rule"
               @"saw a MARKER"
               (Form.str f)
               @(Info.line (Located.info l))
@@ -53,8 +50,7 @@
 
 (def -register-test-rule
   (do
-    (Lint.register-rule!
-      @"marker-rule"
+    (Lint.register-rule! @"marker-rule"
       @"fires when it sees a MARKER symbol"
       rule-marker)
     0))
@@ -64,9 +60,8 @@
            out @""
            n (Array.length &diags)]
     (for [i 0 n]
-      (set!
-        out
-        (String.append &out &(Diagnostic.str (Array.unsafe-nth &diags i)))))
+      (set! out
+            (String.append &out &(Diagnostic.str (Array.unsafe-nth &diags i)))))
     out))
 
 (deftest t
@@ -166,9 +161,8 @@
   ; ----------------------------------------------------------------
   (assert-true t
     (let [s (lint-output "(do x)")]
-      (and
-        (String.contains-string? &s "lonely-do")
-        (String.contains-string? &s "(do x)")))
+      (and (String.contains-string? &s "lonely-do")
+           (String.contains-string? &s "(do x)")))
     "Diagnostic.str includes rule name and offending form")
 
   ; ----------------------------------------------------------------
@@ -278,10 +272,9 @@
   ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
     0
-    (count-with
-      &(fn [n] (= n "lonely-do"))
-      "(defn FooBar [] 1)"
-      "non-kebab-case-defn")
+    (count-with &(fn [n] (= n "lonely-do"))
+                "(defn FooBar [] 1)"
+                "non-kebab-case-defn")
     "filter to lonely-do silences other rules")
   (assert-equal t
     1
@@ -291,10 +284,9 @@
   ; --disable filter: every rule except non-kebab-case-defn
   (assert-equal t
     0
-    (count-with
-      &(fn [n] (/= n "non-kebab-case-defn"))
-      "(defn FooBar [] 1)"
-      "non-kebab-case-defn")
+    (count-with &(fn [n] (/= n "non-kebab-case-defn"))
+                "(defn FooBar [] 1)"
+                "non-kebab-case-defn")
     "disabling non-kebab-case-defn drops it")
 
   ; register-rule! ran at top-level adds a rule that shows up in walks
