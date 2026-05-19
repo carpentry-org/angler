@@ -4,10 +4,9 @@ Sometimes you need custom lint rules for your project. This document is for
 those moments.
 
 A rule in angler is a Carp function that inspects one AST node at a time and
-returns either a diagnostic or nothing. Authoring a new rule means writing
-Carp, recompiling angler with your rule loaded, and distributing the resulting
-binary or the source. A future version will add a pattern language, but I
-haven’t gotten to it yet.
+returns either a diagnostic or nothing. For many rules this means writing a
+structural match by hand, but for simple shape-checks there is now a
+**pattern language** — see [Pattern-based rules](#pattern-based-rules) below.
 
 ## The rule signature
 
@@ -96,6 +95,50 @@ node. If you need to emit several findings on the same form, split
 into separate rules. A future minor may add a sibling
 `register-multi-rule!` accepting `(Fn [&Located] (Array
 Diagnostic))`.
+
+## Pattern-based rules
+
+If your rule just checks the structural shape of a form — "is this a
+two-element list whose head is `do`?" — you can skip writing a function
+entirely and declare the pattern as a string:
+
+```clojure
+(Lint.register-pattern-rule! @"double-not"
+                             @"(not (not x)) is just x"
+                             "(not (not ?x))"
+                             @"(not (not x)) is just x")
+```
+
+`register-pattern-rule!` takes four arguments: rule name, description
+(for `--list-rules`), the pattern string, and the diagnostic message.
+
+### Metavariables
+
+Any symbol in the pattern that starts with `?` is a **metavariable** —
+it matches any single form. If the same `?name` appears more than once,
+both positions must match structurally equal forms (compared via
+`Form.str`).
+
+Examples:
+
+| Pattern | Matches | Does not match |
+|---|---|---|
+| `(do ?x)` | `(do foo)`, `(do (+ 1 2))` | `(do)`, `(do a b)` |
+| `(set! ?x ?x)` | `(set! a a)` | `(set! a b)` |
+| `(not (not ?x))` | `(not (not true))` | `(not true)` |
+
+A bare `?` (single character) is **not** a metavariable — it is treated
+as the literal symbol `?`.
+
+### When to use patterns vs. functions
+
+Patterns are great for fixed-shape rules. They cannot express:
+
+- Conditional logic (e.g. "fire only if the name is not kebab-case")
+- Variable-length matching (e.g. "a list with 2 *or more* children")
+- Cross-node analysis (e.g. inspecting the body of a `defmodule`)
+
+For those, write a function and use `register-rule!`.
 
 ## Building your own angler
 

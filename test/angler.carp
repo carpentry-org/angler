@@ -54,6 +54,10 @@
     (Lint.register-rule! @"marker-rule"
                          @"fires when it sees a MARKER symbol"
                          rule-marker)
+    (Lint.register-pattern-rule! @"test-pattern"
+                                 @"fires on (TPAT ?x ?x)"
+                                 "(TPAT ?x ?x)"
+                                 @"test pattern matched")
     0))
 
 (defn lint-output [src]
@@ -266,9 +270,9 @@
   ; registry: list-rules, register-rule!, lint-source-with
   ; ----------------------------------------------------------------
   (assert-equal t
-    13
+    14
     (Array.length &(Lint.list-rules))
-    "12 built-ins + 1 top-level-registered test rule = 13")
+    "12 built-ins + 2 top-level-registered test rules = 14")
 
   ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
@@ -292,12 +296,28 @@
 
   ; register-rule! ran at top-level adds a rule that shows up in walks
   (assert-equal t
-    13
+    14
     (Array.length &(Lint.list-rules))
-    "after top-level register, 13 rules total")
+    "after top-level register, 14 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
   (assert-false t
     (has-rule? "(defn add [a b] (Int.+ a b))" "marker-rule")
-    "newly-registered rule does not fire elsewhere"))
+    "newly-registered rule does not fire elsewhere")
+
+  ; ----------------------------------------------------------------
+  ; register-pattern-rule!
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(TPAT a a)" "test-pattern")
+    "pattern rule with repeated metavar fires when both match")
+  (assert-false t
+    (has-rule? "(TPAT a b)" "test-pattern")
+    "pattern rule with repeated metavar does not fire when they differ")
+  (assert-false t
+    (has-rule? "(TPAT a)" "test-pattern")
+    "pattern rule does not fire when arity differs")
+  (assert-false t
+    (has-rule? "(OTHER a a)" "test-pattern")
+    "pattern rule does not fire when head symbol differs"))
