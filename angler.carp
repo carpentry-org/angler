@@ -143,8 +143,7 @@ a `Form.Sym` matching `name`.")
   (defn metavar? [segs]
     (and (Int.= 1 (Array.length segs))
          (let [s (Array.unsafe-nth segs 0)]
-           (and (Int.> (String.length s) 1)
-                (Char.= \? (String.char-at s 0))))))
+           (and (Int.> (String.length s) 1) (Char.= \? (String.char-at s 0))))))
 
   (private lookup-binding)
   (hidden lookup-binding)
@@ -153,8 +152,7 @@ a `Form.Sym` matching `name`.")
              n (Array.length bindings)]
       (for [i 0 n]
         (let [p (Array.unsafe-nth bindings i)]
-          (when (= (Pair.a p) name)
-            (set! result (Maybe.Just @(Pair.b p))))))
+          (when (= (Pair.a p) name) (set! result (Maybe.Just @(Pair.b p))))))
       result))
 
   (private match-pattern)
@@ -167,12 +165,9 @@ a `Form.Sym` matching `name`.")
                 form-s (Form.str form)]
             (match (lookup-binding &bindings &name)
               (Maybe.Just bound)
-                (if (= &bound &form-s)
-                  (Maybe.Just bindings)
-                  (Maybe.Nothing))
+                (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
               (Maybe.Nothing)
-                (Maybe.Just
-                  (Array.push-back bindings (Pair.init name form-s)))))
+                (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
           (if (= &(Form.str pat) &(Form.str form))
             (Maybe.Just bindings)
             (Maybe.Nothing)))
@@ -185,16 +180,16 @@ a `Form.Sym` matching `name`.")
                 (let-do [result (Maybe.Just bindings)]
                   (for [i 0 n]
                     (set! result
-                      (match result
-                        (Maybe.Just bs)
-                          (match-pattern
-                            (nth-form pat-items i)
-                            (nth-form form-items i)
-                            bs)
-                        (Maybe.Nothing) (Maybe.Nothing))))
+                          (match result
+                            (Maybe.Just bs)
+                              (match-pattern (nth-form pat-items i)
+                                             (nth-form form-items i)
+                                             bs)
+                            (Maybe.Nothing) (Maybe.Nothing))))
                   result)))
           _ (Maybe.Nothing))
-      _ (if (= &(Form.str pat) &(Form.str form))
+      _
+        (if (= &(Form.str pat) &(Form.str form))
           (Maybe.Just bindings)
           (Maybe.Nothing))))
 
@@ -213,18 +208,22 @@ must have equal string representations.
   (defn register-pattern-rule! [name description pattern-str message]
     (match (Reader.parse pattern-str)
       (Result.Success forms)
-        (if (Int.= 1 (Array.length &forms))
+        (when (Int.= 1 (Array.length &forms))
           (let [pat @(Located.form (Box.peek (Array.unsafe-nth &forms 0)))
                 rn @&name
                 msg @&message]
-            (register-rule! name description
-              (fn [l]
-                (let [f (Located.form l)
-                      info (Located.info l)]
-                  (match (match-pattern &pat f (the (Array (Pair String String)) []))
-                    (Maybe.Just _) (dx info &rn &msg (Form.str f))
-                    (Maybe.Nothing) (Maybe.Nothing))))))
-          ())
+            (register-rule! name
+                            description
+                            (fn [l]
+                              (let [f (Located.form l)
+                                    info (Located.info l)]
+                                (match (match-pattern &pat
+                                                      f
+                                                      (the (Array (Pair String
+                                                                        String))
+                                                           []))
+                                  (Maybe.Just _) (dx info &rn &msg (Form.str f))
+                                  (Maybe.Nothing) (Maybe.Nothing)))))))
       (Result.Error _) ()))
 
   (private rule-if-with-do)
@@ -496,13 +495,13 @@ names satisfy `keep?`.")
   (def -register-builtins
     (do
       (register-pattern-rule! @"lonely-do"
-                             @"(do x) is just x"
-                             "(do ?x)"
-                             @"(do x) is just x")
+                              @"(do x) is just x"
+                              "(do ?x)"
+                              @"(do x) is just x")
       (register-pattern-rule! @"empty-do"
-                             @"(do) has no body"
-                             "(do)"
-                             @"(do) has no body")
+                              @"(do) has no body"
+                              "(do)"
+                              @"(do) has no body")
       (register-rule! @"if-with-do"
                       @"(if cond (do …) ()) → (when-do …); (if cond () (do …)) → (unless-do …)"
                       rule-if-with-do)
@@ -519,13 +518,13 @@ names satisfy `keep?`.")
                       @"(not (= a b)) is just (/= a b)"
                       rule-not-equal)
       (register-pattern-rule! @"double-not"
-                             @"(not (not x)) is just x"
-                             "(not (not ?x))"
-                             @"(not (not x)) is just x")
+                              @"(not (not x)) is just x"
+                              "(not (not ?x))"
+                              @"(not (not x)) is just x")
       (register-pattern-rule! @"set-self"
-                             @"(set! x x) is a no-op"
-                             "(set! ?x ?x)"
-                             @"(set! x x) is a no-op")
+                              @"(set! x x) is a no-op"
+                              "(set! ?x ?x)"
+                              @"(set! x x) is a no-op")
       (register-rule! @"try-around-atomic"
                       @"Parser.try around Parser.string/Parser.byte is redundant"
                       rule-try-around-atomic)
