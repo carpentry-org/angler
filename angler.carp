@@ -117,24 +117,6 @@ a `Form.Sym` matching `name`.")
         (and (Int.= 2 (Array.length items)) (sym? (nth-form items 0) "not"))
       _ false))
 
-  (private sym-eq?)
-  (hidden sym-eq?)
-  (defn sym-eq? [a b]
-    (match-ref a
-      (Form.Sym sa)
-        (match-ref b
-          (Form.Sym sb)
-            (and
-              (Int.= (Array.length sa) (Array.length sb))
-              (let-do [eq true
-                       n (Array.length sa)]
-                (for [i 0 n]
-                  (when (/= (Array.unsafe-nth sa i) (Array.unsafe-nth sb i))
-                    (set! eq false)))
-                eq))
-          _ false)
-      _ false))
-
   (private dx)
   (hidden dx)
   (defn dx [info rule msg ctx]
@@ -156,17 +138,93 @@ a `Form.Sym` matching `name`.")
       (= name "unless") (Maybe.Just @"unless-do")
       (Maybe.Nothing)))
 
-  (private rule-lonely-do)
-  (hidden rule-lonely-do)
-  (defn rule-lonely-do [l]
-    (let [f (Located.form l)
-          info (Located.info l)]
-      (match-ref f
-        (Form.Lst items)
-          (if (and (Int.= 2 (Array.length items)) (sym? (nth-form items 0) "do"))
-            (dx info "lonely-do" "(do x) is just x" (Form.str f))
-            (Maybe.Nothing))
-        _ (Maybe.Nothing))))
+  (private metavar?)
+  (hidden metavar?)
+  (defn metavar? [segs]
+    (and (Int.= 1 (Array.length segs))
+         (let [s (Array.unsafe-nth segs 0)]
+           (and (Int.> (String.length s) 1) (Char.= \? (String.char-at s 0))))))
+
+  (private lookup-binding)
+  (hidden lookup-binding)
+  (defn lookup-binding [bindings name]
+    (let-do [result (Maybe.Nothing)
+             n (Array.length bindings)]
+      (for [i 0 n]
+        (let [p (Array.unsafe-nth bindings i)]
+          (when (= (Pair.a p) name) (set! result (Maybe.Just @(Pair.b p))))))
+      result))
+
+  (private match-pattern)
+  (hidden match-pattern)
+  (defn match-pattern [pat form bindings]
+    (match-ref pat
+      (Form.Sym segs)
+        (if (metavar? segs)
+          (let [name @(Array.unsafe-nth segs 0)
+                form-s (Form.str form)]
+            (match (lookup-binding &bindings &name)
+              (Maybe.Just bound)
+                (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
+              (Maybe.Nothing)
+                (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
+          (if (= &(Form.str pat) &(Form.str form))
+            (Maybe.Just bindings)
+            (Maybe.Nothing)))
+      (Form.Lst pat-items)
+        (match-ref form
+          (Form.Lst form-items)
+            (let [n (Array.length pat-items)]
+              (if (/= n (Array.length form-items))
+                (Maybe.Nothing)
+                (let-do [result (Maybe.Just bindings)]
+                  (for [i 0 n]
+                    (set! result
+                          (match result
+                            (Maybe.Just bs)
+                              (match-pattern (nth-form pat-items i)
+                                             (nth-form form-items i)
+                                             bs)
+                            (Maybe.Nothing) (Maybe.Nothing))))
+                  result)))
+          _ (Maybe.Nothing))
+      _
+        (if (= &(Form.str pat) &(Form.str form))
+          (Maybe.Just bindings)
+          (Maybe.Nothing))))
+
+  (doc register-pattern-rule! "registers a lint rule that fires when
+`pattern-str` (a single Carp form) structurally matches a node.
+Symbols starting with `?` are metavariables: they match any form,
+and if the same `?name` appears more than once the bound forms
+must have equal string representations.
+
+```
+(Lint.register-pattern-rule! @\"set-self\"
+                             @\"(set! x x) is a no-op\"
+                             \"(set! ?x ?x)\"
+                             @\"(set! x x) is a no-op\")
+```")
+  (defn register-pattern-rule! [name description pattern-str message]
+    (match (Reader.parse pattern-str)
+      (Result.Success forms)
+        (when (Int.= 1 (Array.length &forms))
+          (let [pat @(Located.form (Box.peek (Array.unsafe-nth &forms 0)))
+                rn @&name
+                msg @&message]
+            (register-rule! name
+                            description
+                            (fn [l]
+                              (let [f (Located.form l)
+                                    info (Located.info l)]
+                                (match (match-pattern &pat
+                                                      f
+                                                      (the (Array (Pair String
+                                                                        String))
+                                                           []))
+                                  (Maybe.Just _) (dx info &rn &msg (Form.str f))
+                                  (Maybe.Nothing) (Maybe.Nothing)))))))
+      (Result.Error _) ()))
 
   (private rule-if-with-do)
   (hidden rule-if-with-do)
@@ -318,25 +376,6 @@ a `Form.Sym` matching `name`.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
-  (private rule-double-not)
-  (hidden rule-double-not)
-  (defn rule-double-not [l]
-    (let [f (Located.form l)
-          info (Located.info l)]
-      (match-ref f
-        (Form.Lst items)
-          (if (and (Int.= 2 (Array.length items))
-                   (sym? (nth-form items 0) "not"))
-            (match-ref (nth-form items 1)
-              (Form.Lst inner)
-                (if (and (Int.= 2 (Array.length inner))
-                         (sym? (nth-form inner 0) "not"))
-                  (dx info "double-not" "(not (not x)) is just x" (Form.str f))
-                  (Maybe.Nothing))
-              _ (Maybe.Nothing))
-            (Maybe.Nothing))
-        _ (Maybe.Nothing))))
-
   (private rule-if-one-branch-empty)
   (hidden rule-if-one-branch-empty)
   (defn rule-if-one-branch-empty [l]
@@ -383,32 +422,6 @@ a `Form.Sym` matching `name`.")
                       "(unless (not c) x) can be (when c x)"
                       (Form.str f))
                 (Maybe.Nothing)))
-            (Maybe.Nothing))
-        _ (Maybe.Nothing))))
-
-  (private rule-empty-do)
-  (hidden rule-empty-do)
-  (defn rule-empty-do [l]
-    (let [f (Located.form l)
-          info (Located.info l)]
-      (match-ref f
-        (Form.Lst items)
-          (if (and (Int.= 1 (Array.length items)) (sym? (nth-form items 0) "do"))
-            (dx info "empty-do" "(do) has no body" (Form.str f))
-            (Maybe.Nothing))
-        _ (Maybe.Nothing))))
-
-  (private rule-set-self)
-  (hidden rule-set-self)
-  (defn rule-set-self [l]
-    (let [f (Located.form l)
-          info (Located.info l)]
-      (match-ref f
-        (Form.Lst items)
-          (if (and (Int.= 3 (Array.length items))
-                   (and (sym? (nth-form items 0) "set!")
-                        (sym-eq? (nth-form items 1) (nth-form items 2))))
-            (dx info "set-self" "(set! x x) is a no-op" (Form.str f))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
@@ -481,8 +494,14 @@ names satisfy `keep?`.")
   (hidden -register-builtins)
   (def -register-builtins
     (do
-      (register-rule! @"lonely-do" @"(do x) is just x" rule-lonely-do)
-      (register-rule! @"empty-do" @"(do) has no body" rule-empty-do)
+      (register-pattern-rule! @"lonely-do"
+                              @"(do x) is just x"
+                              "(do ?x)"
+                              @"(do x) is just x")
+      (register-pattern-rule! @"empty-do"
+                              @"(do) has no body"
+                              "(do)"
+                              @"(do) has no body")
       (register-rule! @"if-with-do"
                       @"(if cond (do …) ()) → (when-do …); (if cond () (do …)) → (unless-do …)"
                       rule-if-with-do)
@@ -498,8 +517,14 @@ names satisfy `keep?`.")
       (register-rule! @"not-equal"
                       @"(not (= a b)) is just (/= a b)"
                       rule-not-equal)
-      (register-rule! @"double-not" @"(not (not x)) is just x" rule-double-not)
-      (register-rule! @"set-self" @"(set! x x) is a no-op" rule-set-self)
+      (register-pattern-rule! @"double-not"
+                              @"(not (not x)) is just x"
+                              "(not (not ?x))"
+                              @"(not (not x)) is just x")
+      (register-pattern-rule! @"set-self"
+                              @"(set! x x) is a no-op"
+                              "(set! ?x ?x)"
+                              @"(set! x x) is a no-op")
       (register-rule! @"try-around-atomic"
                       @"Parser.try around Parser.string/Parser.byte is redundant"
                       rule-try-around-atomic)
