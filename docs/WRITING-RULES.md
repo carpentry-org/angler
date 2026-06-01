@@ -140,6 +140,47 @@ Patterns are great for fixed-shape rules. They cannot express:
 
 For those, write a function and use `register-rule!`.
 
+## External rule files
+
+For pattern-based rules you don't need to recompile angler at all.
+Write your rules in a plain text file — one array literal per rule:
+
+```
+; my-rules.carp — project-specific lint rules
+[(do ?x)       "lonely-do"  "(do x) is just x"]
+[(set! ?x ?x)  "set-self"   "(set! x x) is a no-op"]
+```
+
+Each rule is `[<pattern> "<name>" "<message>"]`. The pattern uses the
+same `?`-metavariable syntax as `register-pattern-rule!`. Comments
+(`;`) are allowed anywhere.
+
+Load the file at lint time with `--rules`:
+
+```bash
+angler --rules my-rules.carp src/*.carp
+```
+
+Multiple `--rules` flags are supported. Loaded rules participate in
+`--only`, `--disable`, and `--list-rules` exactly like built-ins.
+
+From Carp code, use `Lint.load-rules-from-source!` to load rules
+from a string:
+
+```clojure
+(match (Lint.load-rules-from-source!
+         "[(set! ?x ?x) \"set-self\" \"(set! x x) is a no-op\"]")
+  (Result.Success n) (IO.println &(fmt "loaded %d rules" n))
+  (Result.Error e) (IO.errorln &(Parser.format-error &e)))
+```
+
+### When to use external rules vs. compiled plugins
+
+External rule files are limited to structural pattern matching.
+Rules that need conditional logic, variable-length matching, or
+string predicates (like the kebab-case check) must still be
+compiled as Carp functions — see below.
+
 ## Building your own angler
 
 ```bash

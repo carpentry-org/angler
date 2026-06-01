@@ -5,6 +5,12 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Added `Lint.load-rules-from-source!`: load pattern rules from a
+  string at runtime. Each rule is an array literal
+  `[<pattern> "name" "message"]` — no recompilation needed.
+- Added `--rules FILE` CLI flag: load external pattern rules before
+  linting. Loaded rules participate in `--only`, `--disable`, and
+  `--list-rules` like built-ins.
 - Added `Lint.register-pattern-rule!`: define lint rules as structural
   patterns with `?`-metavariables instead of hand-written match
   functions. Repeated metavariables enforce structural equality.

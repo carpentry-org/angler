@@ -36,6 +36,7 @@
     (IO.println "options:")
     (IO.println "  --only RULES        comma-separated allow-list")
     (IO.println "  --disable RULES     comma-separated deny-list")
+    (IO.println "  --rules FILE        load pattern rules from FILE")
     (IO.println "  --list-rules        print registered rules and exit")
     (IO.println "  -h, --help          show this help")))
 
@@ -59,6 +60,7 @@
   (let-do [argc (StaticArray.length &System.args)
            only-set (the (Array String) [])
            disable-set (the (Array String) [])
+           rules-files (the (Array String) [])
            files (the (Array String) [])
            list-rules false
            show-help false
@@ -82,10 +84,36 @@
                 (set! disable-set
                       (String.split-by (StaticArray.unsafe-nth &System.args i)
                                        &[\,]))))
+          (= a "--rules")
+            (do
+              (set! i (Int.inc i))
+              (when (Int.< i argc)
+                (set! rules-files
+                      (Array.push-back rules-files
+                                       @(StaticArray.unsafe-nth &System.args i)))))
           (set! files (Array.push-back files @a)))
         (set! i (Int.inc i))))
 
     (when-do show-help (print-help!) (System.exit 0))
+
+    (for [j 0 (Array.length &rules-files)]
+      (let [path (Array.unsafe-nth &rules-files j)]
+        (match (IO.read->EOF path)
+          (Result.Error e)
+            (do
+              (IO.errorln &(fmt "%s: cannot read rules file: %s" path &e))
+              (System.exit 1))
+          (Result.Success src)
+            (match (Lint.load-rules-from-source! &src)
+              (Result.Error pe)
+                (do
+                  (IO.errorln
+                    &(fmt "%s: parse error in rules file: %s"
+                          path
+                          &(Parser.format-error &pe)))
+                  (System.exit 1))
+              (Result.Success _) ()))))
+
     (when-do list-rules (print-rules!) (System.exit 0))
     (when-do (Int.= 0 (Array.length &files))
       (IO.errorln "usage: angler [OPTIONS] FILE [FILE...]")
