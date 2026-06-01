@@ -193,6 +193,23 @@ a `Form.Sym` matching `name`.")
           (Maybe.Just bindings)
           (Maybe.Nothing))))
 
+  (private register-pattern-form-rule!)
+  (hidden register-pattern-form-rule!)
+  (defn register-pattern-form-rule! [name description pat message]
+    (let [rn @&name
+          msg @&message]
+      (register-rule! name
+                      description
+                      (fn [l]
+                        (let [f (Located.form l)
+                              info (Located.info l)]
+                          (match (match-pattern &pat
+                                                f
+                                                (the (Array (Pair String String))
+                                                     []))
+                            (Maybe.Just _) (dx info &rn &msg (Form.str f))
+                            (Maybe.Nothing) (Maybe.Nothing)))))))
+
   (doc register-pattern-rule! "registers a lint rule that fires when
 `pattern-str` (a single Carp form) structurally matches a node.
 Symbols starting with `?` are metavariables: they match any form,
@@ -209,22 +226,51 @@ must have equal string representations.
     (match (Reader.parse pattern-str)
       (Result.Success forms)
         (when (Int.= 1 (Array.length &forms))
-          (let [pat @(Located.form (Box.peek (Array.unsafe-nth &forms 0)))
-                rn @&name
-                msg @&message]
-            (register-rule! name
-                            description
-                            (fn [l]
-                              (let [f (Located.form l)
-                                    info (Located.info l)]
-                                (match (match-pattern &pat
-                                                      f
-                                                      (the (Array (Pair String
-                                                                        String))
-                                                           []))
-                                  (Maybe.Just _) (dx info &rn &msg (Form.str f))
-                                  (Maybe.Nothing) (Maybe.Nothing)))))))
+          (register-pattern-form-rule! name
+                                       description
+                                       @(Located.form (Box.peek (Array.unsafe-nth &forms
+                                                                                  0)))
+                                       message))
       (Result.Error _) ()))
+
+  (private try-load-rule!)
+  (hidden try-load-rule!)
+  (defn try-load-rule! [f]
+    (match-ref f
+      (Form.Arr items)
+        (if (Int.= 3 (Array.length items))
+          (match-ref (nth-form items 1)
+            (Form.Str name)
+              (match-ref (nth-form items 2)
+                (Form.Str msg)
+                  (do
+                    (register-pattern-form-rule! @name
+                                                 @msg
+                                                 @(nth-form items 0)
+                                                 @msg)
+                    true)
+                _ false)
+            _ false)
+          false)
+      _ false))
+
+  (doc load-rules-from-source! "parses `src` as a rules file and
+registers each rule found. Each top-level form must be an array
+literal `[<pattern> \"name\" \"message\"]`. Symbols starting with
+`?` in the pattern are metavariables, just as in
+`register-pattern-rule!`. Non-conforming top-level forms are silently
+skipped. Returns the number of rules loaded, or a parse error.")
+  (defn load-rules-from-source! [src]
+    (match (Reader.parse src)
+      (Result.Success forms)
+        (let-do [n (Array.length &forms)
+                 loaded 0]
+          (for [i 0 n]
+            (let [l (Box.peek (Array.unsafe-nth &forms i))]
+              (when (try-load-rule! (Located.form l))
+                (set! loaded (Int.inc loaded)))))
+          (Result.Success loaded))
+      (Result.Error e) (Result.Error e)))
 
   (private rule-if-with-do)
   (hidden rule-if-with-do)

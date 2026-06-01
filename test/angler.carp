@@ -320,4 +320,43 @@
     "pattern rule does not fire when arity differs")
   (assert-false t
     (has-rule? "(OTHER a a)" "test-pattern")
-    "pattern rule does not fire when head symbol differs"))
+    "pattern rule does not fire when head symbol differs")
+
+  ; ----------------------------------------------------------------
+  ; load-rules-from-source!
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (match (Lint.load-rules-from-source!
+        "[(identity ?x) \"identity-wrap\" \"identity is a no-op\"]")
+      (Result.Success n) (Int.= 1 n)
+      _ false)
+    "loads one rule from source")
+  (assert-true t
+    (has-rule? "(identity x)" "identity-wrap")
+    "loaded rule fires on matching form")
+  (assert-false t
+    (has-rule? "(foo x)" "identity-wrap")
+    "loaded rule does not fire on non-matching form")
+  (assert-true t (match (Lint.load-rules-from-source! "; a comment
+[(?x ?x) \"dup-call\" \"duplicate call\"]") (Result.Success n) (Int.= 1 n) _
+        false) "loads rules alongside comments")
+  (assert-true t
+    (has-rule? "(foo foo)" "dup-call")
+    "dup-call rule fires on matching form")
+  (assert-false t
+    (has-rule? "(foo bar)" "dup-call")
+    "dup-call rule does not fire on non-matching form")
+  (assert-true t
+    (match (Lint.load-rules-from-source! "[(broken")
+      (Result.Error _) true
+      _ false)
+    "returns error on malformed source")
+  (assert-true t
+    (match (Lint.load-rules-from-source! "(not-an-array \"name\" \"msg\")")
+      (Result.Success n) (Int.= 0 n)
+      _ false)
+    "skips non-array top-level forms")
+  (assert-equal t
+    16
+    (Array.length &(Lint.list-rules))
+    "14 previous + 2 loaded from source = 16"))
