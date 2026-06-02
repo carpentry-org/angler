@@ -157,6 +157,31 @@ to inspect the active rule set.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#load-rules-from-source!">
+                        <h3 id="load-rules-from-source!">
+                            load-rules-from-source!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref String a)] (Result Int ParseErr))
+                    </p>
+                    <pre class="args">
+                        (load-rules-from-source! src)
+                    </pre>
+                    <p class="doc">
+                        <p>parses <code>src</code> as a rules file and
+registers each rule found. Each top-level form must be an array
+literal <code>[&lt;pattern&gt; &quot;name&quot; &quot;message&quot;]</code>. Symbols starting with
+<code>?</code> in the pattern are metavariables, just as in
+<code>register-pattern-rule!</code>. Non-conforming top-level forms are silently
+skipped. Returns the number of rules loaded, or a parse error.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#lst-head?">
                         <h3 id="lst-head?">
                             lst-head?
@@ -196,6 +221,35 @@ a <code>Form.Sym</code> matching <code>name</code>.</p>
                         <p>pulls the <code>Form</code> out of the i-th <code>Located</code> child of
 an <code>Array (Box Located)</code>. Most rules want the structural shape, not
 the position, when descending into a compound form's children.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#register-pattern-rule!">
+                        <h3 id="register-pattern-rule!">
+                            register-pattern-rule!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String, String, (Ref String a), String] ())
+                    </p>
+                    <pre class="args">
+                        (register-pattern-rule! name description pattern-str message)
+                    </pre>
+                    <p class="doc">
+                        <p>registers a lint rule that fires when
+<code>pattern-str</code> (a single Carp form) structurally matches a node.
+Symbols starting with <code>?</code> are metavariables: they match any form,
+and if the same <code>?name</code> appears more than once the bound forms
+must have equal string representations.</p>
+<pre><code>(Lint.register-pattern-rule! @&quot;set-self&quot;
+                             @&quot;(set! x x) is a no-op&quot;
+                             &quot;(set! ?x ?x)&quot;
+                             @&quot;(set! x x) is a no-op&quot;)
+</code></pre>
 
                     </p>
                 </div>
