@@ -5,6 +5,10 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Added four new built-in lint rules: `identical-if-branches` (`if cond x x`),
+  `empty-let-bindings` (`let [] body`), `nested-if-chain` (deeply nested
+  if-else suggesting `cond`), and `redundant-do-in-do-variant` (`while-do cond
+  (do ...)`).
 - Added `Lint.load-rules-from-source!`: load pattern rules from a
   string at runtime. Each rule is an array literal
   `[<pattern> "name" "message"]` — no recompilation needed.
