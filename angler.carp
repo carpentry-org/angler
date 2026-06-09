@@ -160,17 +160,17 @@ a `Form.Sym` matching `name`.")
   (defn match-pattern [pat form bindings]
     (match-ref pat
       (Form.Sym segs)
-        (if (metavar? segs)
-          (let [name @(Array.unsafe-nth segs 0)
-                form-s (Form.str form)]
-            (match (lookup-binding &bindings &name)
-              (Maybe.Just bound)
-                (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
-              (Maybe.Nothing)
-                (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
-          (if (= &(Form.str pat) &(Form.str form))
-            (Maybe.Just bindings)
-            (Maybe.Nothing)))
+        (cond
+          (metavar? segs)
+            (let [name @(Array.unsafe-nth segs 0)
+                  form-s (Form.str form)]
+              (match (lookup-binding &bindings &name)
+                (Maybe.Just bound)
+                  (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
+                (Maybe.Nothing)
+                  (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
+          (= &(Form.str pat) &(Form.str form)) (Maybe.Just bindings)
+          (Maybe.Nothing))
       (Form.Lst pat-items)
         (match-ref form
           (Form.Lst form-items)
@@ -471,6 +471,57 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private do-variant?)
+  (hidden do-variant?)
+  (defn do-variant? [name]
+    (or (= name "let-do")
+        (or (= name "while-do") (or (= name "when-do") (= name "unless-do")))))
+
+  (private rule-nested-if-chain)
+  (hidden rule-nested-if-chain)
+  (defn rule-nested-if-chain [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 4 (Array.length items)) (sym? (nth-form items 0) "if"))
+            (let [else-form (nth-form items 3)]
+              (if (lst-head? else-form "if")
+                (dx info
+                    "nested-if-chain"
+                    "(if c1 x (if c2 ...)) can be a cond expression"
+                    (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-redundant-do-in-do-variant)
+  (hidden rule-redundant-do-in-do-variant)
+  (defn rule-redundant-do-in-do-variant [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (Int.= 3 (Array.length items))
+            (let [head (nth-form items 0)]
+              (match-ref head
+                (Form.Sym segs)
+                  (if (and (Int.= 1 (Array.length segs))
+                           (do-variant? (Array.unsafe-nth segs 0)))
+                    (let [body (nth-form items 2)]
+                      (if (lst-head? body "do")
+                        (dx info
+                            "redundant-do-in-do-variant"
+                            &(fmt
+                              "(%s ... (do ...)) already wraps body in do; the inner do is redundant"
+                              (Array.unsafe-nth segs 0))
+                            (Form.str f))
+                        (Maybe.Nothing)))
+                    (Maybe.Nothing))
+                _ (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
   (private push-maybe!)
   (hidden push-maybe!)
   (defn push-maybe! [acc m]
@@ -580,4 +631,18 @@ names satisfy `keep?`.")
       (register-rule! @"non-pascal-case-defmodule"
                       @"defmodule names should be PascalCase"
                       rule-non-pascal-case-defmodule)
+      (register-pattern-rule! @"identical-if-branches"
+                              @"(if cond x x) — both branches are identical"
+                              "(if ?c ?x ?x)"
+                              @"(if cond x x) — both branches are identical; the condition is pointless")
+      (register-pattern-rule! @"empty-let-bindings"
+                              @"(let [] body) — empty bindings; just use body directly"
+                              "(let [] ?x)"
+                              @"(let [] body) has no bindings; the let is unnecessary")
+      (register-rule! @"nested-if-chain"
+                      @"(if c1 x (if c2 ...)) can be a cond expression"
+                      rule-nested-if-chain)
+      (register-rule! @"redundant-do-in-do-variant"
+                      @"-do variant with (do ...) body; the inner do is redundant"
+                      rule-redundant-do-in-do-variant)
       0)))

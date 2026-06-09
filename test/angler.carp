@@ -267,12 +267,73 @@
     "non-pascal-case-defmodule does not fire on all-caps acronym")
 
   ; ----------------------------------------------------------------
+  ; identical-if-branches
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(if c x x)" "identical-if-branches")
+    "identical-if-branches fires on (if c x x)")
+  (assert-true t
+    (has-rule? "(if c (foo a) (foo a))" "identical-if-branches")
+    "identical-if-branches fires on compound identical branches")
+  (assert-false t
+    (has-rule? "(if c x y)" "identical-if-branches")
+    "identical-if-branches does not fire on different branches")
+  (assert-false t
+    (has-rule? "(if c (foo a) (foo b))" "identical-if-branches")
+    "identical-if-branches does not fire on different compound branches")
+
+  ; ----------------------------------------------------------------
+  ; empty-let-bindings
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(let [] x)" "empty-let-bindings")
+    "empty-let-bindings fires on (let [] x)")
+  (assert-false t
+    (has-rule? "(let [a 1] a)" "empty-let-bindings")
+    "empty-let-bindings does not fire on non-empty bindings")
+
+  ; ----------------------------------------------------------------
+  ; nested-if-chain
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(if c1 x (if c2 y z))" "nested-if-chain")
+    "nested-if-chain fires on (if c1 x (if c2 y z))")
+  (assert-false t
+    (has-rule? "(if c x y)" "nested-if-chain")
+    "nested-if-chain does not fire on plain if/else")
+  (assert-false t
+    (has-rule? "(if c (if c2 a b) y)" "nested-if-chain")
+    "nested-if-chain does not fire when nested if is in then branch")
+
+  ; ----------------------------------------------------------------
+  ; redundant-do-in-do-variant
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(while-do c (do x y))" "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant fires on (while-do c (do ...))")
+  (assert-true t
+    (has-rule? "(let-do [a 1] (do x y))" "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant fires on (let-do [...] (do ...))")
+  (assert-true t
+    (has-rule? "(when-do c (do x y))" "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant fires on (when-do c (do ...))")
+  (assert-true t
+    (has-rule? "(unless-do c (do x y))" "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant fires on (unless-do c (do ...))")
+  (assert-false t
+    (has-rule? "(while-do c x)" "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant does not fire on plain while-do body")
+  (assert-false t
+    (has-rule? "(while-do c x (do y))" "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant does not fire when do is not the sole body form")
+
+  ; ----------------------------------------------------------------
   ; registry: list-rules, register-rule!, lint-source-with
   ; ----------------------------------------------------------------
   (assert-equal t
-    14
+    18
     (Array.length &(Lint.list-rules))
-    "12 built-ins + 2 top-level-registered test rules = 14")
+    "16 built-ins + 2 top-level-registered test rules = 18")
 
   ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
@@ -296,9 +357,9 @@
 
   ; register-rule! ran at top-level adds a rule that shows up in walks
   (assert-equal t
-    14
+    18
     (Array.length &(Lint.list-rules))
-    "after top-level register, 14 rules total")
+    "after top-level register, 18 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -357,6 +418,6 @@
       _ false)
     "skips non-array top-level forms")
   (assert-equal t
-    16
+    20
     (Array.length &(Lint.list-rules))
-    "14 previous + 2 loaded from source = 16"))
+    "18 previous + 2 loaded from source = 20"))
