@@ -160,17 +160,17 @@ a `Form.Sym` matching `name`.")
   (defn match-pattern [pat form bindings]
     (match-ref pat
       (Form.Sym segs)
-        (if (metavar? segs)
-          (let [name @(Array.unsafe-nth segs 0)
-                form-s (Form.str form)]
-            (match (lookup-binding &bindings &name)
-              (Maybe.Just bound)
-                (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
-              (Maybe.Nothing)
-                (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
-          (if (= &(Form.str pat) &(Form.str form))
-            (Maybe.Just bindings)
-            (Maybe.Nothing)))
+        (cond
+          (metavar? segs)
+            (let [name @(Array.unsafe-nth segs 0)
+                  form-s (Form.str form)]
+              (match (lookup-binding &bindings &name)
+                (Maybe.Just bound)
+                  (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
+                (Maybe.Nothing)
+                  (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
+          (= &(Form.str pat) &(Form.str form)) (Maybe.Just bindings)
+          (Maybe.Nothing))
       (Form.Lst pat-items)
         (match-ref form
           (Form.Lst form-items)
