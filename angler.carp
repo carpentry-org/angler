@@ -67,14 +67,7 @@ the position, when descending into a compound form's children.")
 symbol — e.g. `(sym? f \"Parser.try\")` matches `Parser.try`.")
   (defn sym? [f name]
     (match-ref f
-      (Form.Sym segs)
-        (let-do [joined @""
-                 n (Array.length segs)]
-          (for [i 0 n]
-            (do
-              (when (Int.> i 0) (set! joined (String.append &joined ".")))
-              (set! joined (String.append &joined (Array.unsafe-nth segs i)))))
-          (= name &joined))
+      (Form.Sym segs) (let [joined (String.join "." segs)] (= name &joined))
       _ false))
 
   (doc lst-head? "true iff `f` is `(Form.Lst …)` whose first child is
