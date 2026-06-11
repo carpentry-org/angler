@@ -488,6 +488,90 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private bol?)
+  (hidden bol?)
+  (defn bol? [f val] (match-ref f (Form.Bol b) (= b val) _ false))
+
+  (private rule-eq-true)
+  (hidden rule-eq-true)
+  (defn rule-eq-true [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items)) (sym? (nth-form items 0) "="))
+            (let [a (nth-form items 1)
+                  b (nth-form items 2)]
+              (cond
+                (bol? b &true)
+                  (dx info "eq-true" "(= x true) is just x" (Form.str f))
+                (bol? a &true)
+                  (dx info "eq-true" "(= true x) is just x" (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-eq-false)
+  (hidden rule-eq-false)
+  (defn rule-eq-false [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items)) (sym? (nth-form items 0) "="))
+            (let [a (nth-form items 1)
+                  b (nth-form items 2)]
+              (cond
+                (bol? b &false)
+                  (dx info "eq-false" "(= x false) is just (not x)" (Form.str f))
+                (bol? a &false)
+                  (dx info "eq-false" "(= false x) is just (not x)" (Form.str f))
+                (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-cond-single-branch)
+  (hidden rule-cond-single-branch)
+  (defn rule-cond-single-branch [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items))
+                   (sym? (nth-form items 0) "cond"))
+            (dx info
+                "cond-single-branch"
+                "(cond c x) with one branch is just (when c x)"
+                (Form.str f))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
+  (private rule-single-use-let)
+  (hidden rule-single-use-let)
+  (defn rule-single-use-let [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items))
+                   (sym? (nth-form items 0) "let"))
+            (let [bindings-form (nth-form items 1)
+                  body (nth-form items 2)]
+              (match-ref bindings-form
+                (Form.Arr bindings)
+                  (if (Int.= 2 (Array.length bindings))
+                    (let [bname (nth-form bindings 0)]
+                      (if (= &(Form.str bname) &(Form.str body))
+                        (dx info
+                            "single-use-let"
+                            "(let [x expr] x) is just expr"
+                            (Form.str f))
+                        (Maybe.Nothing)))
+                    (Maybe.Nothing))
+                _ (Maybe.Nothing)))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
   (private rule-redundant-do-in-do-variant)
   (hidden rule-redundant-do-in-do-variant)
   (defn rule-redundant-do-in-do-variant [l]
@@ -638,4 +722,20 @@ names satisfy `keep?`.")
       (register-rule! @"redundant-do-in-do-variant"
                       @"-do variant with (do ...) body; the inner do is redundant"
                       rule-redundant-do-in-do-variant)
+      (register-pattern-rule! @"unsafe-result-unwrap"
+                              @"Result.unsafe-from-success can crash; use match instead"
+                              "(Result.unsafe-from-success ?x)"
+                              @"Result.unsafe-from-success can crash on Error; use match or from-success instead")
+      (register-pattern-rule! @"unsafe-maybe-unwrap"
+                              @"Maybe.unsafe-from can crash; use match instead"
+                              "(Maybe.unsafe-from ?x)"
+                              @"Maybe.unsafe-from can crash on Nothing; use match or from instead")
+      (register-rule! @"eq-true" @"(= x true) is just x" rule-eq-true)
+      (register-rule! @"eq-false" @"(= x false) is just (not x)" rule-eq-false)
+      (register-rule! @"cond-single-branch"
+                      @"(cond c x) with one branch is just (when c x)"
+                      rule-cond-single-branch)
+      (register-rule! @"single-use-let"
+                      @"(let [x expr] x) is just expr"
+                      rule-single-use-let)
       0)))
