@@ -4,7 +4,10 @@
 
 (use-all Test Lint Form)
 
-(defn lint! [src] (Result.unsafe-from-success (Lint.lint-source src)))
+(defn lint! [src]
+  (match (Lint.lint-source src)
+    (Result.Success diags) diags
+    (Result.Error _) (Array.zero)))
 
 (defn no-diag? [src] (Int.= 0 (Array.length &(lint! src))))
 
@@ -42,7 +45,9 @@
       _ (Maybe.Nothing))))
 
 (defn count-with [keep? src rule]
-  (let-do [diags (Result.unsafe-from-success (Lint.lint-source-with keep? src))
+  (let-do [diags (match (Lint.lint-source-with keep? src)
+             (Result.Success d) d
+             (Result.Error _) (Array.zero))
            n 0]
     (for [i 0 (Array.length &diags)]
       (when (= rule (Diagnostic.rule (Array.unsafe-nth &diags i)))

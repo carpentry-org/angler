@@ -121,10 +121,6 @@ a `Form.Sym` matching `name`.")
   (defn empty-list? [f]
     (match-ref f (Form.Lst items) (Int.= 0 (Array.length items)) _ false))
 
-  (private bol?)
-  (hidden bol?)
-  (defn bol? [f val] (match-ref f (Form.Bol b) (= b &val) _ false))
-
   (private form-with-do-variant)
   (hidden form-with-do-variant)
   (defn form-with-do-variant [name]
