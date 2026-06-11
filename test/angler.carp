@@ -393,14 +393,14 @@
   ; cond-single-branch
   ; ----------------------------------------------------------------
   (assert-true t
-    (has-rule? "(cond c x)" "cond-single-branch")
-    "cond-single-branch fires on (cond c x)")
+    (has-rule? "(cond c v default)" "cond-single-branch")
+    "cond-single-branch fires on (cond c v default)")
   (assert-false t
-    (has-rule? "(cond c1 x c2 y)" "cond-single-branch")
+    (has-rule? "(cond c1 v1 c2 v2 default)" "cond-single-branch")
     "cond-single-branch does not fire on multi-branch cond")
   (assert-false t
-    (has-rule? "(cond)" "cond-single-branch")
-    "cond-single-branch does not fire on empty cond")
+    (has-rule? "(if c v default)" "cond-single-branch")
+    "cond-single-branch does not fire on if")
 
   ; ----------------------------------------------------------------
   ; single-use-let

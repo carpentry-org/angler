@@ -121,6 +121,10 @@ a `Form.Sym` matching `name`.")
   (defn empty-list? [f]
     (match-ref f (Form.Lst items) (Int.= 0 (Array.length items)) _ false))
 
+  (private bol?)
+  (hidden bol?)
+  (defn bol? [f val] (match-ref f (Form.Bol b) (= b &val) _ false))
+
   (private form-with-do-variant)
   (hidden form-with-do-variant)
   (defn form-with-do-variant [name]
@@ -537,11 +541,11 @@ skipped. Returns the number of rules loaded, or a parse error.")
           info (Located.info l)]
       (match-ref f
         (Form.Lst items)
-          (if (and (Int.= 3 (Array.length items))
+          (if (and (Int.= 4 (Array.length items))
                    (sym? (nth-form items 0) "cond"))
             (dx info
                 "cond-single-branch"
-                "(cond c x) with one branch is just (when c x)"
+                "(cond c v default) is just (if c v default)"
                 (Form.str f))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
@@ -733,7 +737,7 @@ names satisfy `keep?`.")
       (register-rule! @"eq-true" @"(= x true) is just x" rule-eq-true)
       (register-rule! @"eq-false" @"(= x false) is just (not x)" rule-eq-false)
       (register-rule! @"cond-single-branch"
-                      @"(cond c x) with one branch is just (when c x)"
+                      @"(cond c v default) is just (if c v default)"
                       rule-cond-single-branch)
       (register-rule! @"single-use-let"
                       @"(let [x expr] x) is just expr"
