@@ -5,6 +5,11 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Added six new lint rules: `unsafe-result-unwrap` and `unsafe-maybe-unwrap`
+  (pattern-based, flag crash-prone unwrap calls), `eq-true` and `eq-false`
+  (redundant boolean comparisons), `cond-single-branch` (single-branch cond
+  that should be `if`), and `single-use-let` (`let [x expr] x` is just
+  `expr`).
 - Added four new built-in lint rules: `identical-if-branches` (`if cond x x`),
   `empty-let-bindings` (`let [] body`), `nested-if-chain` (deeply nested
   if-else suggesting `cond`), and `redundant-do-in-do-variant` (`while-do cond

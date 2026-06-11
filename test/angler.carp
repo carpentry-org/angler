@@ -4,7 +4,10 @@
 
 (use-all Test Lint Form)
 
-(defn lint! [src] (Result.unsafe-from-success (Lint.lint-source src)))
+(defn lint! [src]
+  (match (Lint.lint-source src)
+    (Result.Success diags) diags
+    (Result.Error _) (Array.zero)))
 
 (defn no-diag? [src] (Int.= 0 (Array.length &(lint! src))))
 
@@ -42,7 +45,9 @@
       _ (Maybe.Nothing))))
 
 (defn count-with [keep? src rule]
-  (let-do [diags (Result.unsafe-from-success (Lint.lint-source-with keep? src))
+  (let-do [diags (match (Lint.lint-source-with keep? src)
+             (Result.Success d) d
+             (Result.Error _) (Array.zero))
            n 0]
     (for [i 0 (Array.length &diags)]
       (when (= rule (Diagnostic.rule (Array.unsafe-nth &diags i)))
@@ -328,12 +333,106 @@
     "redundant-do-in-do-variant does not fire when do is not the sole body form")
 
   ; ----------------------------------------------------------------
+  ; unsafe-result-unwrap
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(Result.unsafe-from-success x)" "unsafe-result-unwrap")
+    "unsafe-result-unwrap fires on (Result.unsafe-from-success x)")
+  (assert-false t
+    (has-rule? "(Result.from-success x @\"\")" "unsafe-result-unwrap")
+    "unsafe-result-unwrap does not fire on safe Result.from-success")
+  (assert-false t
+    (has-rule?
+      "(match r (Result.Success v) v (Result.Error _) @\"\")"
+      "unsafe-result-unwrap")
+    "unsafe-result-unwrap does not fire on match")
+
+  ; ----------------------------------------------------------------
+  ; unsafe-maybe-unwrap
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(Maybe.unsafe-from x)" "unsafe-maybe-unwrap")
+    "unsafe-maybe-unwrap fires on (Maybe.unsafe-from x)")
+  (assert-false t
+    (has-rule? "(Maybe.from x 0)" "unsafe-maybe-unwrap")
+    "unsafe-maybe-unwrap does not fire on safe Maybe.from")
+  (assert-false t
+    (has-rule?
+      "(match m (Maybe.Just v) v (Maybe.Nothing) 0)"
+      "unsafe-maybe-unwrap")
+    "unsafe-maybe-unwrap does not fire on match")
+
+  ; ----------------------------------------------------------------
+  ; eq-true
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(= x true)" "eq-true")
+    "eq-true fires on (= x true)")
+  (assert-true t
+    (has-rule? "(= true x)" "eq-true")
+    "eq-true fires on (= true x)")
+  (assert-false t
+    (has-rule? "(= x y)" "eq-true")
+    "eq-true does not fire on (= x y)")
+  (assert-false t
+    (has-rule? "(= x false)" "eq-true")
+    "eq-true does not fire on (= x false)")
+
+  ; ----------------------------------------------------------------
+  ; eq-false
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(= x false)" "eq-false")
+    "eq-false fires on (= x false)")
+  (assert-true t
+    (has-rule? "(= false x)" "eq-false")
+    "eq-false fires on (= false x)")
+  (assert-false t
+    (has-rule? "(= x y)" "eq-false")
+    "eq-false does not fire on (= x y)")
+  (assert-false t
+    (has-rule? "(= x true)" "eq-false")
+    "eq-false does not fire on (= x true)")
+
+  ; ----------------------------------------------------------------
+  ; cond-single-branch
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(cond c v default)" "cond-single-branch")
+    "cond-single-branch fires on (cond c v default)")
+  (assert-false t
+    (has-rule? "(cond c1 v1 c2 v2 default)" "cond-single-branch")
+    "cond-single-branch does not fire on multi-branch cond")
+  (assert-false t
+    (has-rule? "(if c v default)" "cond-single-branch")
+    "cond-single-branch does not fire on if")
+
+  ; ----------------------------------------------------------------
+  ; single-use-let
+  ; ----------------------------------------------------------------
+  (assert-true t
+    (has-rule? "(let [x 1] x)" "single-use-let")
+    "single-use-let fires on (let [x 1] x)")
+  (assert-true t
+    (has-rule? "(let [res (foo)] res)" "single-use-let")
+    "single-use-let fires on (let [res (foo)] res)")
+  (assert-false t
+    (has-rule? "(let [x 1] (+ x 1))" "single-use-let")
+    "single-use-let does not fire when body uses binding in expression")
+  (assert-false t
+    (has-rule? "(let [x 1 y 2] x)" "single-use-let")
+    "single-use-let does not fire on multi-binding let")
+  (assert-false t
+    (has-rule? "(let [x 1] y)" "single-use-let")
+    "single-use-let does not fire when body is a different variable")
+
+  ; ----------------------------------------------------------------
   ; registry: list-rules, register-rule!, lint-source-with
   ; ----------------------------------------------------------------
   (assert-equal t
-    18
+    24
     (Array.length &(Lint.list-rules))
-    "16 built-ins + 2 top-level-registered test rules = 18")
+    "22 built-ins + 2 top-level-registered test rules = 24")
 
   ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
@@ -357,9 +456,9 @@
 
   ; register-rule! ran at top-level adds a rule that shows up in walks
   (assert-equal t
-    18
+    24
     (Array.length &(Lint.list-rules))
-    "after top-level register, 18 rules total")
+    "after top-level register, 24 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -418,6 +517,6 @@
       _ false)
     "skips non-array top-level forms")
   (assert-equal t
-    20
+    26
     (Array.length &(Lint.list-rules))
-    "18 previous + 2 loaded from source = 20"))
+    "24 previous + 2 loaded from source = 26"))
