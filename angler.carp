@@ -346,20 +346,30 @@ skipped. Returns the number of rules loaded, or a parse error.")
           info (Located.info l)]
       (match-ref f
         (Form.Lst items)
-          (if (and (Int.>= (Array.length items) 2)
-                   (sym? (nth-form items 0) "defn"))
-            (let [name-form (nth-form items 1)]
-              (match-ref name-form
-                (Form.Sym segs)
-                  (if (Int.= 1 (Array.length segs))
-                    (let [name (Array.unsafe-nth segs 0)]
-                      (if (not (kebab-case? name))
-                        (dx info
-                            "non-kebab-case-defn"
-                            &(fmt
-                              "defn name '%s' has uppercase letters; Carp convention is kebab-case"
-                              name)
-                            (Form.str f))
+          (if (Int.>= (Array.length items) 2)
+            (let [head (nth-form items 0)]
+              (match-ref head
+                (Form.Sym hsegs)
+                  (if (Int.= 1 (Array.length hsegs))
+                    (let [hd (Array.unsafe-nth hsegs 0)]
+                      (if (or (= hd "defn")
+                              (or (= hd "defn-") (= hd "defndynamic")))
+                        (let [name-form (nth-form items 1)]
+                          (match-ref name-form
+                            (Form.Sym segs)
+                              (if (Int.= 1 (Array.length segs))
+                                (let [name (Array.unsafe-nth segs 0)]
+                                  (if (not (kebab-case? name))
+                                    (dx info
+                                        "non-kebab-case-defn"
+                                        &(fmt
+                                          "%s name '%s' has uppercase letters; Carp convention is kebab-case"
+                                          hd
+                                          name)
+                                        (Form.str f))
+                                    (Maybe.Nothing)))
+                                (Maybe.Nothing))
+                            _ (Maybe.Nothing)))
                         (Maybe.Nothing)))
                     (Maybe.Nothing))
                 _ (Maybe.Nothing)))
@@ -447,20 +457,36 @@ skipped. Returns the number of rules loaded, or a parse error.")
           info (Located.info l)]
       (match-ref f
         (Form.Lst items)
-          (if (and (Int.= 3 (Array.length items)) (not-arg? (nth-form items 1)))
+          (if (and (Int.>= (Array.length items) 3) (not-arg? (nth-form items 1)))
             (let [head (nth-form items 0)]
-              (cond
-                (sym? head "when")
-                  (dx info
-                      "when-with-not"
-                      "(when (not c) x) can be (unless c x)"
-                      (Form.str f))
-                (sym? head "unless")
-                  (dx info
-                      "when-with-not"
-                      "(unless (not c) x) can be (when c x)"
-                      (Form.str f))
-                (Maybe.Nothing)))
+              (match-ref head
+                (Form.Sym segs)
+                  (if (Int.= 1 (Array.length segs))
+                    (let [name (Array.unsafe-nth segs 0)]
+                      (cond
+                        (= name "when")
+                          (dx info
+                              "when-with-not"
+                              "(when (not c) x) can be (unless c x)"
+                              (Form.str f))
+                        (= name "when-do")
+                          (dx info
+                              "when-with-not"
+                              "(when-do (not c) ...) can be (unless-do c ...)"
+                              (Form.str f))
+                        (= name "unless")
+                          (dx info
+                              "when-with-not"
+                              "(unless (not c) x) can be (when c x)"
+                              (Form.str f))
+                        (= name "unless-do")
+                          (dx info
+                              "when-with-not"
+                              "(unless-do (not c) ...) can be (when-do c ...)"
+                              (Form.str f))
+                        (Maybe.Nothing)))
+                    (Maybe.Nothing))
+                _ (Maybe.Nothing)))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
