@@ -5,6 +5,11 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Fixed `when-with-not` to handle `when-do`/`unless-do` variants (now
+  correctly suggests `unless-do`/`when-do` instead of the non-`do`
+  counterparts).
+- Expanded `non-kebab-case-defn` to also lint `defn-` and `defndynamic`
+  names.
 - Added six new lint rules: `unsafe-result-unwrap` and `unsafe-maybe-unwrap`
   (pattern-based, flag crash-prone unwrap calls), `eq-true` and `eq-false`
   (redundant boolean comparisons), `cond-single-branch` (single-branch cond

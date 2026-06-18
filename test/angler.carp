@@ -147,6 +147,18 @@
   (assert-false t
     (has-rule? "(defn foo-bar [] 1)" "non-kebab-case-defn")
     "does not fire on kebab-case defn name")
+  (assert-true t
+    (has-rule? "(defn- FooBar [] 1)" "non-kebab-case-defn")
+    "fires on PascalCase defn- name")
+  (assert-true t
+    (has-rule? "(defndynamic FooBar [] 1)" "non-kebab-case-defn")
+    "fires on PascalCase defndynamic name")
+  (assert-false t
+    (has-rule? "(defn- foo-bar [] 1)" "non-kebab-case-defn")
+    "does not fire on kebab-case defn- name")
+  (assert-false t
+    (has-rule? "(defndynamic foo-bar [] 1)" "non-kebab-case-defn")
+    "does not fire on kebab-case defndynamic name")
   (assert-false t
     (has-rule? "(defn good? [x] true)" "non-kebab-case-defn")
     "predicate suffix ? is fine")
@@ -236,6 +248,15 @@
   (assert-true t
     (has-rule? "(unless (not c) x)" "when-with-not")
     "when-with-not fires on (unless (not c) x)")
+  (assert-true t
+    (has-rule? "(when-do (not c) x y)" "when-with-not")
+    "when-with-not fires on (when-do (not c) ...)")
+  (assert-true t
+    (has-rule? "(unless-do (not c) x y)" "when-with-not")
+    "when-with-not fires on (unless-do (not c) ...)")
+  (assert-false t
+    (has-rule? "(when-do c x y)" "when-with-not")
+    "when-with-not does not fire on plain when-do")
   (assert-false t
     (has-rule? "(when c x)" "when-with-not")
     "when-with-not does not fire on plain when")
@@ -430,9 +451,9 @@
   ; registry: list-rules, register-rule!, lint-source-with
   ; ----------------------------------------------------------------
   (assert-equal t
-    24
+    26
     (Array.length &(Lint.list-rules))
-    "22 built-ins + 2 top-level-registered test rules = 24")
+    "24 built-ins + 2 top-level-registered test rules = 26")
 
   ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
@@ -456,9 +477,9 @@
 
   ; register-rule! ran at top-level adds a rule that shows up in walks
   (assert-equal t
-    24
+    26
     (Array.length &(Lint.list-rules))
-    "after top-level register, 24 rules total")
+    "after top-level register, 26 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -517,6 +538,6 @@
       _ false)
     "skips non-array top-level forms")
   (assert-equal t
-    26
+    28
     (Array.length &(Lint.list-rules))
-    "24 previous + 2 loaded from source = 26"))
+    "26 previous + 2 loaded from source = 28"))
