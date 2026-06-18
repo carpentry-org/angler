@@ -403,28 +403,6 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
-  (private rule-not-equal)
-  (hidden rule-not-equal)
-  (defn rule-not-equal [l]
-    (let [f (Located.form l)
-          info (Located.info l)]
-      (match-ref f
-        (Form.Lst items)
-          (if (and (Int.= 2 (Array.length items))
-                   (sym? (nth-form items 0) "not"))
-            (match-ref (nth-form items 1)
-              (Form.Lst inner)
-                (if (and (Int.= 3 (Array.length inner))
-                         (sym? (nth-form inner 0) "="))
-                  (dx info
-                      "not-equal"
-                      "(not (= a b)) is just (/= a b)"
-                      (Form.str f))
-                  (Maybe.Nothing))
-              _ (Maybe.Nothing))
-            (Maybe.Nothing))
-        _ (Maybe.Nothing))))
-
   (private rule-if-one-branch-empty)
   (hidden rule-if-one-branch-empty)
   (defn rule-if-one-branch-empty [l]
@@ -450,43 +428,26 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
-  (private rule-when-with-not)
-  (hidden rule-when-with-not)
-  (defn rule-when-with-not [l]
+  (private rule-when-do-with-not)
+  (hidden rule-when-do-with-not)
+  (defn rule-when-do-with-not [l]
     (let [f (Located.form l)
           info (Located.info l)]
       (match-ref f
         (Form.Lst items)
           (if (and (Int.>= (Array.length items) 3) (not-arg? (nth-form items 1)))
-            (let [head (nth-form items 0)]
-              (match-ref head
-                (Form.Sym segs)
-                  (if (Int.= 1 (Array.length segs))
-                    (let [name (Array.unsafe-nth segs 0)]
-                      (cond
-                        (= name "when")
-                          (dx info
-                              "when-with-not"
-                              "(when (not c) x) can be (unless c x)"
-                              (Form.str f))
-                        (= name "when-do")
-                          (dx info
-                              "when-with-not"
-                              "(when-do (not c) ...) can be (unless-do c ...)"
-                              (Form.str f))
-                        (= name "unless")
-                          (dx info
-                              "when-with-not"
-                              "(unless (not c) x) can be (when c x)"
-                              (Form.str f))
-                        (= name "unless-do")
-                          (dx info
-                              "when-with-not"
-                              "(unless-do (not c) ...) can be (when-do c ...)"
-                              (Form.str f))
-                        (Maybe.Nothing)))
-                    (Maybe.Nothing))
-                _ (Maybe.Nothing)))
+            (cond
+              (sym? (nth-form items 0) "when-do")
+                (dx info
+                    "when-with-not"
+                    "(when-do (not c) ...) can be (unless-do c ...)"
+                    (Form.str f))
+              (sym? (nth-form items 0) "unless-do")
+                (dx info
+                    "when-with-not"
+                    "(unless-do (not c) ...) can be (when-do c ...)"
+                    (Form.str f))
+              (Maybe.Nothing))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
@@ -711,12 +672,21 @@ names satisfy `keep?`.")
       (register-rule! @"form-with-do"
                       @"(let|while|when|unless ... (do ...)) should use the matching -do variant"
                       rule-form-with-do)
+      (register-pattern-rule! @"when-with-not"
+                              @"(when (not c) x) → (unless c x)"
+                              "(when (not ?c) ?x)"
+                              @"(when (not c) x) can be (unless c x)")
+      (register-pattern-rule! @"when-with-not"
+                              @"(unless (not c) x) → (when c x)"
+                              "(unless (not ?c) ?x)"
+                              @"(unless (not c) x) can be (when c x)")
       (register-rule! @"when-with-not"
-                      @"(when (not c) x) → (unless c x); (unless (not c) x) → (when c x)"
-                      rule-when-with-not)
-      (register-rule! @"not-equal"
-                      @"(not (= a b)) is just (/= a b)"
-                      rule-not-equal)
+                      @"(when-do (not c) ...) → (unless-do c ...); (unless-do (not c) ...) → (when-do c ...)"
+                      rule-when-do-with-not)
+      (register-pattern-rule! @"not-equal"
+                              @"(not (= a b)) is just (/= a b)"
+                              "(not (= ?a ?b))"
+                              @"(not (= a b)) is just (/= a b)")
       (register-pattern-rule! @"double-not"
                               @"(not (not x)) is just x"
                               "(not (not ?x))"

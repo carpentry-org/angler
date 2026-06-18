@@ -451,9 +451,9 @@
   ; registry: list-rules, register-rule!, lint-source-with
   ; ----------------------------------------------------------------
   (assert-equal t
-    24
+    26
     (Array.length &(Lint.list-rules))
-    "22 built-ins + 2 top-level-registered test rules = 24")
+    "24 built-ins + 2 top-level-registered test rules = 26")
 
   ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
@@ -477,9 +477,9 @@
 
   ; register-rule! ran at top-level adds a rule that shows up in walks
   (assert-equal t
-    24
+    26
     (Array.length &(Lint.list-rules))
-    "after top-level register, 24 rules total")
+    "after top-level register, 26 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -538,6 +538,6 @@
       _ false)
     "skips non-array top-level forms")
   (assert-equal t
-    26
+    28
     (Array.length &(Lint.list-rules))
-    "24 previous + 2 loaded from source = 26"))
+    "26 previous + 2 loaded from source = 28"))
