@@ -75,18 +75,12 @@
     out))
 
 (deftest t
-  ; ----------------------------------------------------------------
-  ; lonely-do
-  ; ----------------------------------------------------------------
   (assert-true t (has-rule? "(do x)" "lonely-do") "fires on (do x)")
   (assert-false t (has-rule? "(do x y)" "lonely-do") "does not fire on (do x y)")
   (assert-true t
     (has-rule? "(let [a 1] (do a))" "lonely-do")
     "fires on nested (do x) inside let body")
 
-  ; ----------------------------------------------------------------
-  ; if-with-do
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(if cond (do x y) ())" "if-with-do")
     "fires on (if cond (do x y) ()) — the (when-do …) desugaring")
@@ -100,9 +94,6 @@
     (has-rule? "(if cond (do x) other)" "if-with-do")
     "does not fire when the else arm is not ()")
 
-  ; ----------------------------------------------------------------
-  ; form-with-do
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(let [a 1] (do a a))" "form-with-do")
     "fires on (let [...] (do ...)) — suggest let-do")
@@ -125,9 +116,6 @@
     (has-rule? "(Foo.bar x (do y))" "form-with-do")
     "does not fire on unrelated forms even with do body")
 
-  ; ----------------------------------------------------------------
-  ; try-around-atomic
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(Parser.try (Parser.string @\"foo\"))" "try-around-atomic")
     "fires on Parser.try around Parser.string")
@@ -138,9 +126,6 @@
     (has-rule? "(Parser.try (Parser.many p))" "try-around-atomic")
     "does not fire on Parser.try around non-atomic")
 
-  ; ----------------------------------------------------------------
-  ; non-kebab-case-defn
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(defn FooBar [] 1)" "non-kebab-case-defn")
     "fires on PascalCase defn name")
@@ -163,39 +148,24 @@
     (has-rule? "(defn good? [x] true)" "non-kebab-case-defn")
     "predicate suffix ? is fine")
 
-  ; ----------------------------------------------------------------
-  ; clean source = no diagnostics
-  ; ----------------------------------------------------------------
   (assert-true t
     (no-diag? "(defn add [a b] (Int.+ a b))")
     "clean code yields no diagnostics")
 
-  ; ----------------------------------------------------------------
-  ; multiple findings in one source
-  ; ----------------------------------------------------------------
   (assert-equal t
     2
     (count-rule "(do x) (if cond (do y) ())" "lonely-do")
     "two lonely-do findings (top level + nested inside if)")
 
-  ; ----------------------------------------------------------------
-  ; diagnostic formatting
-  ; ----------------------------------------------------------------
   (assert-true t
     (let [s (lint-output "(do x)")]
       (and (String.contains-string? &s "lonely-do")
            (String.contains-string? &s "(do x)")))
     "Diagnostic.str includes rule name and offending form")
 
-  ; ----------------------------------------------------------------
-  ; comments do not trip up rules
-  ; ----------------------------------------------------------------
   (assert-true t (has-rule? "; warm-up
 (do x)" "lonely-do") "rules survive top-level comments")
 
-  ; ----------------------------------------------------------------
-  ; diagnostics carry the offending form's start position
-  ; ----------------------------------------------------------------
   (assert-equal t
     1
     @(Diagnostic.line (Array.unsafe-nth &(lint! "(do x)") 0))
@@ -211,9 +181,6 @@
     @(Diagnostic.col (Array.unsafe-nth &(lint! "    (do x)") 0))
     "diagnostic col tracks leading whitespace")
 
-  ; ----------------------------------------------------------------
-  ; new rules
-  ; ----------------------------------------------------------------
   (assert-true t (has-rule? "(do)" "empty-do") "empty-do fires on (do)")
   (assert-false t
     (has-rule? "(do x)" "empty-do")
@@ -292,9 +259,6 @@
     (has-rule? "(defmodule CLI)" "non-pascal-case-defmodule")
     "non-pascal-case-defmodule does not fire on all-caps acronym")
 
-  ; ----------------------------------------------------------------
-  ; identical-if-branches
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(if c x x)" "identical-if-branches")
     "identical-if-branches fires on (if c x x)")
@@ -308,9 +272,6 @@
     (has-rule? "(if c (foo a) (foo b))" "identical-if-branches")
     "identical-if-branches does not fire on different compound branches")
 
-  ; ----------------------------------------------------------------
-  ; empty-let-bindings
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(let [] x)" "empty-let-bindings")
     "empty-let-bindings fires on (let [] x)")
@@ -318,9 +279,6 @@
     (has-rule? "(let [a 1] a)" "empty-let-bindings")
     "empty-let-bindings does not fire on non-empty bindings")
 
-  ; ----------------------------------------------------------------
-  ; nested-if-chain
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(if c1 x (if c2 y z))" "nested-if-chain")
     "nested-if-chain fires on (if c1 x (if c2 y z))")
@@ -331,9 +289,6 @@
     (has-rule? "(if c (if c2 a b) y)" "nested-if-chain")
     "nested-if-chain does not fire when nested if is in then branch")
 
-  ; ----------------------------------------------------------------
-  ; redundant-do-in-do-variant
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(while-do c (do x y))" "redundant-do-in-do-variant")
     "redundant-do-in-do-variant fires on (while-do c (do ...))")
@@ -353,9 +308,6 @@
     (has-rule? "(while-do c x (do y))" "redundant-do-in-do-variant")
     "redundant-do-in-do-variant does not fire when do is not the sole body form")
 
-  ; ----------------------------------------------------------------
-  ; unsafe-result-unwrap
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(Result.unsafe-from-success x)" "unsafe-result-unwrap")
     "unsafe-result-unwrap fires on (Result.unsafe-from-success x)")
@@ -368,9 +320,6 @@
       "unsafe-result-unwrap")
     "unsafe-result-unwrap does not fire on match")
 
-  ; ----------------------------------------------------------------
-  ; unsafe-maybe-unwrap
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(Maybe.unsafe-from x)" "unsafe-maybe-unwrap")
     "unsafe-maybe-unwrap fires on (Maybe.unsafe-from x)")
@@ -383,9 +332,6 @@
       "unsafe-maybe-unwrap")
     "unsafe-maybe-unwrap does not fire on match")
 
-  ; ----------------------------------------------------------------
-  ; eq-true
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(= x true)" "eq-true")
     "eq-true fires on (= x true)")
@@ -399,9 +345,6 @@
     (has-rule? "(= x false)" "eq-true")
     "eq-true does not fire on (= x false)")
 
-  ; ----------------------------------------------------------------
-  ; eq-false
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(= x false)" "eq-false")
     "eq-false fires on (= x false)")
@@ -415,9 +358,6 @@
     (has-rule? "(= x true)" "eq-false")
     "eq-false does not fire on (= x true)")
 
-  ; ----------------------------------------------------------------
-  ; cond-single-branch
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(cond c v default)" "cond-single-branch")
     "cond-single-branch fires on (cond c v default)")
@@ -428,9 +368,6 @@
     (has-rule? "(if c v default)" "cond-single-branch")
     "cond-single-branch does not fire on if")
 
-  ; ----------------------------------------------------------------
-  ; single-use-let
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(let [x 1] x)" "single-use-let")
     "single-use-let fires on (let [x 1] x)")
@@ -447,15 +384,11 @@
     (has-rule? "(let [x 1] y)" "single-use-let")
     "single-use-let does not fire when body is a different variable")
 
-  ; ----------------------------------------------------------------
-  ; registry: list-rules, register-rule!, lint-source-with
-  ; ----------------------------------------------------------------
   (assert-equal t
     26
     (Array.length &(Lint.list-rules))
     "24 built-ins + 2 top-level-registered test rules = 26")
 
-  ; --only filter via predicate: only `lonely-do` fires
   (assert-equal t
     0
     (count-with &(fn [n] (= n "lonely-do"))
@@ -467,7 +400,6 @@
     (count-with &(fn [n] (= n "lonely-do")) "(do x)" "lonely-do")
     "filter to lonely-do still fires lonely-do")
 
-  ; --disable filter: every rule except non-kebab-case-defn
   (assert-equal t
     0
     (count-with &(fn [n] (/= n "non-kebab-case-defn"))
@@ -475,7 +407,6 @@
                 "non-kebab-case-defn")
     "disabling non-kebab-case-defn drops it")
 
-  ; register-rule! ran at top-level adds a rule that shows up in walks
   (assert-equal t
     26
     (Array.length &(Lint.list-rules))
@@ -487,9 +418,6 @@
     (has-rule? "(defn add [a b] (Int.+ a b))" "marker-rule")
     "newly-registered rule does not fire elsewhere")
 
-  ; ----------------------------------------------------------------
-  ; register-pattern-rule!
-  ; ----------------------------------------------------------------
   (assert-true t
     (has-rule? "(TPAT a a)" "test-pattern")
     "pattern rule with repeated metavar fires when both match")
@@ -503,9 +431,6 @@
     (has-rule? "(OTHER a a)" "test-pattern")
     "pattern rule does not fire when head symbol differs")
 
-  ; ----------------------------------------------------------------
-  ; load-rules-from-source!
-  ; ----------------------------------------------------------------
   (assert-true t
     (match (Lint.load-rules-from-source!
         "[(identity ?x) \"identity-wrap\" \"identity is a no-op\"]")
