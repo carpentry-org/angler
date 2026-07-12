@@ -462,6 +462,11 @@
       (Result.Success n) (Int.= 0 n)
       _ false)
     "skips non-array top-level forms")
+  (assert-true t
+    (match (Lint.lint-source "(def s \"\\q\")")
+      (Result.Error _) true
+      (Result.Success _) false)
+    "surfaces a parse error for a string with an invalid escape")
   (assert-equal t
     28
     (Array.length &(Lint.list-rules))

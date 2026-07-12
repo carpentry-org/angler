@@ -1,4 +1,4 @@
-(load "git@github.com:carpentry-org/carp-reader@0.3.0")
+(load "git@github.com:carpentry-org/carp-reader@0.3.7")
 
 (doc Diagnostic "is a single lint finding: the rule that fired, a
 human-readable message, the source text of the offending form, and

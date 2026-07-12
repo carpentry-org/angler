@@ -5,6 +5,8 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Report a parse error for source containing invalid string escape
+  sequences, which were previously accepted silently.
 - Fixed `when-with-not` to handle `when-do`/`unless-do` variants (now
   correctly suggests `unless-do`/`when-do` instead of the non-`do`
   counterparts).
