@@ -278,6 +278,15 @@ called `name`.")
   (hidden comment?)
   (defn comment? [f] (match-ref f (Form.Cmt _) true _ false))
 
+  (private splice-node?)
+  (hidden splice-node?)
+  (defn splice-node? [l]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (and (Int.= 2 (Array.length items))
+             (sym? (nth-form items 0) "unquote-splicing"))
+      _ false))
+
   ; a synthesized node (reader-macro head) has an empty span, so this
   ; also rejects nodes that have no bytes of their own to splice.
   (private splicable?)
@@ -310,9 +319,12 @@ called `name`.")
   (private replace-with)
   (hidden replace-with)
   (defn replace-with [l src inner prefix suffix]
-    (match (slice-of src inner)
-      (Maybe.Just s) (rewrite l src (String.concat &[@prefix s @suffix]))
-      (Maybe.Nothing) (Maybe.Nothing)))
+    (if (and (Int.= 0 (String.length prefix))
+             (and (Int.= 0 (String.length suffix)) (splice-node? inner)))
+      (Maybe.Nothing)
+      (match (slice-of src inner)
+        (Maybe.Just s) (rewrite l src (String.concat &[@prefix s @suffix]))
+        (Maybe.Nothing) (Maybe.Nothing))))
 
   (private name-byte?)
   (hidden name-byte?)
@@ -344,7 +356,10 @@ called `name`.")
     (let-do [out @""
              n (String.length tpl)
              i 0
-             ok true]
+             ok true
+             lone? (and (Int.> n 1)
+                        (and (Char.= \? (String.char-at tpl 0))
+                             (Int.= n (metavar-end tpl 0 n))))]
       (while-do (and ok (Int.< i n))
         (let-do [meta? (Char.= \? (String.char-at tpl i))
                  j (if meta? (metavar-end tpl i n) (literal-end tpl i n))
@@ -352,9 +367,11 @@ called `name`.")
           (if meta?
             (match (lookup-binding bindings &chunk)
               (Maybe.Just bound)
-                (match (slice-of src &bound)
-                  (Maybe.Just s) (set! out (String.append &out &s))
-                  (Maybe.Nothing) (set! ok false))
+                (if (and lone? (splice-node? &bound))
+                  (set! ok false)
+                  (match (slice-of src &bound)
+                    (Maybe.Just s) (set! out (String.append &out &s))
+                    (Maybe.Nothing) (set! ok false)))
               (Maybe.Nothing) (set! ok false))
             (set! out (String.append &out &chunk)))
           (set! i j)))
@@ -958,9 +975,10 @@ names satisfy `keep?`.")
   (doc fix-source "applies every registered fix to `src` and returns
 the rewritten source. Findings whose rule has no fix, and fixes that
 overlap one already applied, are left alone; the rewrite is repeated
-until it reaches a fixpoint. Only the bytes of fixed forms change, so
-formatting and comments elsewhere are preserved. A parse error is
-returned as such, and clean input comes back byte-identical.")
+until it reaches a fixpoint or a fixed pass limit. Only the bytes of
+fixed forms change, so formatting and comments elsewhere are
+preserved. A parse error is returned as such, and clean input comes
+back byte-identical.")
   (defn fix-source [src]
     (match (Reader.parse src)
       (Result.Success _) (Result.Success (fix-loop &(fn [_] true) @src))

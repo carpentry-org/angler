@@ -544,6 +544,21 @@ x ; tail
     "reader-macro forms survive being spliced as a body")
 
   (assert-true t
+    (has-rule? "(do %@forms)" "lonely-do")
+    "lonely-do still reports an unquote-splicing body")
+  (assert-equal t
+    "(do %@forms)"
+    &(fix! "(do %@forms)")
+    "unwrapping an unquote-splicing body is refused")
+  (assert-true t
+    (has-rule? "(= %@forms true)" "eq-true")
+    "eq-true still reports an unquote-splicing operand")
+  (assert-equal t
+    "(= %@forms true)"
+    &(fix! "(= %@forms true)")
+    "unwrapping an unquote-splicing operand is refused")
+
+  (assert-true t
     (match (Lint.fix-source "(do")
       (Result.Error _) true
       (Result.Success _) false)
