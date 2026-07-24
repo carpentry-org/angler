@@ -25,6 +25,21 @@ into multiple rules.")
    description String
    fn (Fn [(Ref Located)] (Maybe Diagnostic))])
 
+(doc Fix "is a mechanical rewrite: replace the bytes in `[start, end)`
+of the source that was linted with `replacement`. Every byte outside
+that range is left alone, so formatting, comments and string escapes
+elsewhere in the file survive untouched.")
+(deftype Fix [start Int
+              end Int
+              replacement String])
+
+(doc FixRule "is the rewrite half of a rule, kept in a registry of its
+own so `Rule` stays as it is. `fn` takes the offending node and the
+full source and returns `(Maybe Fix)`; `Nothing` means “no rewrite I
+am sure of”, and the finding is then reported but not fixed.")
+(deftype FixRule [name String
+                  fn (Fn [(Ref Located) (Ref String)] (Maybe Fix))])
+
 (doc Lint "is the linter's core: the rule registry, the AST walker, and the
 public entry points (`lint`, `lint-with`, `lint-source`,
 `lint-source-with`). Plugin authors interact with it via
@@ -61,6 +76,11 @@ to inspect the active rule set.")
 an `Array (Box Located)`. Most rules want the structural shape, not
 the position, when descending into a compound form's children.")
   (defn nth-form [items i] (Located.form (Box.peek (Array.unsafe-nth items i))))
+
+  (doc nth-located "returns the i-th `Located` child of an `Array (Box
+Located)`. Use it over `nth-form` when a rule or fix needs the child's
+source position as well as its shape.")
+  (defn nth-located [items i] (Box.peek (Array.unsafe-nth items i)))
 
   (doc sym? "true iff `f` is a `Form.Sym` whose dotted name equals
 `name`. `name` may itself contain `.` to match a multi-segment
@@ -148,43 +168,49 @@ a `Form.Sym` matching `name`.")
           (when (= (Pair.a p) name) (set! result (Maybe.Just @(Pair.b p))))))
       result))
 
+  (private no-bindings)
+  (hidden no-bindings)
+  (defn no-bindings [] (the (Array (Pair String Located)) []))
+
   (private match-pattern)
   (hidden match-pattern)
-  (defn match-pattern [pat form bindings]
-    (match-ref pat
-      (Form.Sym segs)
-        (cond
-          (metavar? segs)
-            (let [name @(Array.unsafe-nth segs 0)
-                  form-s (Form.str form)]
-              (match (lookup-binding &bindings &name)
-                (Maybe.Just bound)
-                  (if (= &bound &form-s) (Maybe.Just bindings) (Maybe.Nothing))
-                (Maybe.Nothing)
-                  (Maybe.Just (Array.push-back bindings (Pair.init name form-s)))))
-          (= &(Form.str pat) &(Form.str form)) (Maybe.Just bindings)
-          (Maybe.Nothing))
-      (Form.Lst pat-items)
-        (match-ref form
-          (Form.Lst form-items)
-            (let [n (Array.length pat-items)]
-              (if (/= n (Array.length form-items))
-                (Maybe.Nothing)
-                (let-do [result (Maybe.Just bindings)]
-                  (for [i 0 n]
-                    (set! result
-                          (match result
-                            (Maybe.Just bs)
-                              (match-pattern (nth-form pat-items i)
-                                             (nth-form form-items i)
-                                             bs)
-                            (Maybe.Nothing) (Maybe.Nothing))))
-                  result)))
-          _ (Maybe.Nothing))
-      _
-        (if (= &(Form.str pat) &(Form.str form))
-          (Maybe.Just bindings)
-          (Maybe.Nothing))))
+  (defn match-pattern [pat l bindings]
+    (let [form (Located.form l)]
+      (match-ref pat
+        (Form.Sym segs)
+          (cond
+            (metavar? segs)
+              (let [name @(Array.unsafe-nth segs 0)]
+                (match (lookup-binding &bindings &name)
+                  (Maybe.Just bound)
+                    (if (= &(Form.str (Located.form &bound)) &(Form.str form))
+                      (Maybe.Just bindings)
+                      (Maybe.Nothing))
+                  (Maybe.Nothing)
+                    (Maybe.Just (Array.push-back bindings (Pair.init name @l)))))
+            (= &(Form.str pat) &(Form.str form)) (Maybe.Just bindings)
+            (Maybe.Nothing))
+        (Form.Lst pat-items)
+          (match-ref form
+            (Form.Lst form-items)
+              (let [n (Array.length pat-items)]
+                (if (/= n (Array.length form-items))
+                  (Maybe.Nothing)
+                  (let-do [result (Maybe.Just bindings)]
+                    (for [i 0 n]
+                      (set! result
+                            (match result
+                              (Maybe.Just bs)
+                                (match-pattern (nth-form pat-items i)
+                                               (nth-located form-items i)
+                                               bs)
+                              (Maybe.Nothing) (Maybe.Nothing))))
+                    result)))
+            _ (Maybe.Nothing))
+        _
+          (if (= &(Form.str pat) &(Form.str form))
+            (Maybe.Just bindings)
+            (Maybe.Nothing)))))
 
   (private register-pattern-form-rule!)
   (hidden register-pattern-form-rule!)
@@ -196,10 +222,7 @@ a `Form.Sym` matching `name`.")
                       (fn [l]
                         (let [f (Located.form l)
                               info (Located.info l)]
-                          (match (match-pattern &pat
-                                                f
-                                                (the (Array (Pair String String))
-                                                     []))
+                          (match (match-pattern &pat l (no-bindings))
                             (Maybe.Just _) (dx info &rn &msg (Form.str f))
                             (Maybe.Nothing) (Maybe.Nothing)))))))
 
@@ -226,25 +249,188 @@ must have equal string representations.
                                        message))
       (Result.Error _) ()))
 
+  (private *fixes*)
+  (hidden *fixes*)
+  (def *fixes* (the (Array FixRule) []))
+
+  (doc register-fix! "registers a rewrite for the rule called `name`.
+`fn` receives a node the rule fired on and the full source it came
+from, and returns the `Fix` to apply, or `Nothing` if this particular
+node has no rewrite that is certainly semantics-preserving.
+
+Several fixes may share a rule name; the first one to return `Just`
+wins. A rule without a fix is reported by `lint` exactly as before and
+skipped by `fix-source`.")
+  (defn register-fix! [name fn]
+    (set! *fixes* (Array.push-back @&*fixes* (FixRule.init name fn))))
+
+  (doc fixable? "true iff at least one fix is registered for the rule
+called `name`.")
+  (defn fixable? [name]
+    (let-do [found false
+             n (Array.length &*fixes*)]
+      (for [i 0 n]
+        (when (= name (FixRule.name (Array.unsafe-nth &*fixes* i)))
+          (set! found true)))
+      found))
+
+  (private comment?)
+  (hidden comment?)
+  (defn comment? [f] (match-ref f (Form.Cmt _) true _ false))
+
+  ; a synthesized node (reader-macro head) has an empty span, so this
+  ; also rejects nodes that have no bytes of their own to splice.
+  (private splicable?)
+  (hidden splicable?)
+  (defn splicable? [l src]
+    (let [start @(Info.pos (Located.info l))
+          end @(Info.pos (Located.end l))]
+      (and (Int.< start end)
+           (and (Int.<= end (String.length src))
+                (not (comment? (Located.form l)))))))
+
+  (private slice-of)
+  (hidden slice-of)
+  (defn slice-of [src l]
+    (if (splicable? l src)
+      (Maybe.Just
+        (String.byte-slice src
+                           @(Info.pos (Located.info l))
+                           @(Info.pos (Located.end l))))
+      (Maybe.Nothing)))
+
+  (private rewrite)
+  (hidden rewrite)
+  (defn rewrite [l src text]
+    (if (splicable? l src)
+      (Maybe.Just
+        (Fix.init @(Info.pos (Located.info l)) @(Info.pos (Located.end l)) text))
+      (Maybe.Nothing)))
+
+  (private replace-with)
+  (hidden replace-with)
+  (defn replace-with [l src inner prefix suffix]
+    (match (slice-of src inner)
+      (Maybe.Just s) (rewrite l src (String.concat &[@prefix s @suffix]))
+      (Maybe.Nothing) (Maybe.Nothing)))
+
+  (private name-byte?)
+  (hidden name-byte?)
+  (defn name-byte? [c]
+    (or
+      (or (and (Char.>= c \a) (Char.<= c \z))
+          (and (Char.>= c \A) (Char.<= c \Z)))
+      (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
+
+  (private metavar-end)
+  (hidden metavar-end)
+  (defn metavar-end [tpl start n]
+    (let-do [j (Int.inc start)]
+      (while (and (Int.< j n) (name-byte? (String.char-at tpl j)))
+        (set! j (Int.inc j)))
+      j))
+
+  (private literal-end)
+  (hidden literal-end)
+  (defn literal-end [tpl start n]
+    (let-do [j start]
+      (while (and (Int.< j n) (not (Char.= \? (String.char-at tpl j))))
+        (set! j (Int.inc j)))
+      j))
+
+  (private expand-template)
+  (hidden expand-template)
+  (defn expand-template [tpl bindings src]
+    (let-do [out @""
+             n (String.length tpl)
+             i 0
+             ok true]
+      (while-do (and ok (Int.< i n))
+        (let-do [meta? (Char.= \? (String.char-at tpl i))
+                 j (if meta? (metavar-end tpl i n) (literal-end tpl i n))
+                 chunk (String.byte-slice tpl i j)]
+          (if meta?
+            (match (lookup-binding bindings &chunk)
+              (Maybe.Just bound)
+                (match (slice-of src &bound)
+                  (Maybe.Just s) (set! out (String.append &out &s))
+                  (Maybe.Nothing) (set! ok false))
+              (Maybe.Nothing) (set! ok false))
+            (set! out (String.append &out &chunk)))
+          (set! i j)))
+      (if ok (Maybe.Just out) (Maybe.Nothing))))
+
+  (private register-pattern-fix-form!)
+  (hidden register-pattern-fix-form!)
+  (defn register-pattern-fix-form! [name description pat message template]
+    (let-do [p @&pat]
+      (register-pattern-form-rule! @&name description pat message)
+      (register-fix! name
+                     (fn [l src]
+                       (match (match-pattern &p l (no-bindings))
+                         (Maybe.Just bs)
+                           (match (expand-template &template &bs src)
+                             (Maybe.Just text) (rewrite l src text)
+                             (Maybe.Nothing) (Maybe.Nothing))
+                         (Maybe.Nothing) (Maybe.Nothing))))))
+
+  (doc register-pattern-fix-rule! "is `register-pattern-rule!` plus a
+rewrite: `template-str` is source text in which every `?name` is
+replaced by the *original bytes* the metavariable matched, and the
+matched node is replaced by the result.
+
+```
+(Lint.register-pattern-fix-rule! @\"double-not\"
+                                 @\"(not (not x)) is just x\"
+                                 \"(not (not ?x))\"
+                                 @\"(not (not x)) is just x\"
+                                 @\"?x\")
+```
+
+Only register a template that is unconditionally
+semantics-preserving: `fix-source` applies it without asking.")
+  (defn register-pattern-fix-rule! [name
+                                    description
+                                    pattern-str
+                                    message
+                                    template]
+    (match (Reader.parse pattern-str)
+      (Result.Success forms)
+        (when (Int.= 1 (Array.length &forms))
+          (register-pattern-fix-form! name
+                                      description
+                                      @(Located.form (Box.peek (Array.unsafe-nth &forms
+                                                                                 0)))
+                                      message
+                                      template))
+      (Result.Error _) ()))
+
   (private try-load-rule!)
   (hidden try-load-rule!)
   (defn try-load-rule! [f]
     (match-ref f
       (Form.Arr items)
-        (if (Int.= 3 (Array.length items))
-          (match-ref (nth-form items 1)
-            (Form.Str name)
-              (match-ref (nth-form items 2)
-                (Form.Str msg)
-                  (do
-                    (register-pattern-form-rule! @name
-                                                 @msg
-                                                 @(nth-form items 0)
-                                                 @msg)
-                    true)
-                _ false)
-            _ false)
-          false)
+        (let [n (Array.length items)]
+          (if (or (Int.= 3 n) (Int.= 4 n))
+            (match-ref (nth-form items 1)
+              (Form.Str name)
+                (match-ref (nth-form items 2)
+                  (Form.Str msg)
+                    (do
+                      (if (Int.= 4 n)
+                        (register-pattern-fix-form! @name
+                                                    @msg
+                                                    @(nth-form items 0)
+                                                    @msg
+                                                    (Form.str (nth-form items 3)))
+                        (register-pattern-form-rule! @name
+                                                     @msg
+                                                     @(nth-form items 0)
+                                                     @msg))
+                      true)
+                  _ false)
+              _ false)
+            false))
       _ false))
 
   (doc load-rules-from-source! "parses `src` as a rules file and
@@ -517,6 +703,29 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private eq-bool-fix)
+  (hidden eq-bool-fix)
+  (defn eq-bool-fix [l src val prefix suffix]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.= 3 (Array.length items)) (sym? (nth-form items 0) "="))
+          (cond
+            (bol? (nth-form items 2) val)
+              (replace-with l src (nth-located items 1) prefix suffix)
+            (bol? (nth-form items 1) val)
+              (replace-with l src (nth-located items 2) prefix suffix)
+            (Maybe.Nothing))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
+  (private fix-eq-true)
+  (hidden fix-eq-true)
+  (defn fix-eq-true [l src] (eq-bool-fix l src &true "" ""))
+
+  (private fix-eq-false)
+  (hidden fix-eq-false)
+  (defn fix-eq-false [l src] (eq-bool-fix l src &false "(not " ")"))
+
   (private rule-cond-single-branch)
   (hidden rule-cond-single-branch)
   (defn rule-cond-single-branch [l]
@@ -651,14 +860,128 @@ names satisfy `keep?`.")
       (Result.Success forms) (Result.Success (walk &forms keep?))
       (Result.Error e) (Result.Error e)))
 
+  (private fix-for)
+  (hidden fix-for)
+  (defn fix-for [name l src]
+    (let-do [result (Maybe.Nothing)
+             n (Array.length &*fixes*)]
+      (for [i 0 n]
+        (let [fr (Array.unsafe-nth &*fixes* i)]
+          (when (and (Maybe.nothing? &result) (= name (FixRule.name fr)))
+            (set! result (~(FixRule.fn fr) l src)))))
+      result))
+
+  (private node-fixes)
+  (hidden node-fixes)
+  (defn node-fixes [l keep? src]
+    (let-do [acc (the (Array Fix) [])
+             n (Array.length &*rules*)]
+      (for [i 0 n]
+        (let [r (Array.unsafe-nth &*rules* i)]
+          (when (and (~keep? (Rule.name r)) (Maybe.just? &(~(Rule.fn r) l)))
+            (match (fix-for (Rule.name r) l src)
+              (Maybe.Just f) (set! acc (Array.push-back acc f))
+              (Maybe.Nothing) ()))))
+      acc))
+
+  (private walk-fixes)
+  (hidden walk-fixes)
+  (defn walk-fixes [forms keep? src]
+    (let-do [acc (the (Array Fix) [])
+             n (Array.length forms)]
+      (for [i 0 n]
+        (let-do [l (nth-located forms i)]
+          (set! acc (extend! acc (node-fixes l keep? src)))
+          (match-ref (Located.form l)
+            (Form.Lst items)
+              (set! acc (extend! acc (walk-fixes items keep? src)))
+            (Form.Arr items)
+              (set! acc (extend! acc (walk-fixes items keep? src)))
+            (Form.StaticArr items)
+              (set! acc (extend! acc (walk-fixes items keep? src)))
+            (Form.Dict items)
+              (set! acc (extend! acc (walk-fixes items keep? src)))
+            _ ())))
+      acc))
+
+  (private start-ord)
+  (hidden start-ord)
+  ; heap order, like core's own `ord`: `>` here sorts ascending.
+  (defn start-ord [a b] (Int.> @(Fix.start a) @(Fix.start b)))
+
+  (private apply-fixes)
+  (hidden apply-fixes)
+  (defn apply-fixes [src fixes]
+    (let-do [ordered (Array.sorted-by fixes &start-ord)
+             out @""
+             at 0
+             n (Array.length &ordered)]
+      (for [i 0 n]
+        (let-do [f (Array.unsafe-nth &ordered i)]
+          (when-do (Int.>= @(Fix.start f) at)
+            (set! out
+                  (String.concat
+                    &[out
+                      (String.byte-slice src at @(Fix.start f))
+                      @(Fix.replacement f)]))
+            (set! at @(Fix.end f)))))
+      (String.append &out &(String.byte-slice src at (String.length src)))))
+
+  (private fix-once)
+  (hidden fix-once)
+  (defn fix-once [keep? src]
+    (match (Reader.parse src)
+      (Result.Success forms)
+        (let [fixes (walk-fixes &forms keep? src)]
+          (if (Int.= 0 (Array.length &fixes))
+            (Maybe.Nothing)
+            (Maybe.Just (apply-fixes src &fixes))))
+      (Result.Error _) (Maybe.Nothing)))
+
+  (private fix-passes)
+  (hidden fix-passes)
+  (def fix-passes 10)
+
+  (private fix-loop)
+  (hidden fix-loop)
+  (defn fix-loop [keep? src]
+    (let-do [out src
+             i 0
+             done false]
+      (while-do (and (not done) (Int.< i fix-passes))
+        (match (fix-once keep? &out)
+          (Maybe.Just next) (if (= &next &out) (set! done true) (set! out next))
+          (Maybe.Nothing) (set! done true))
+        (set! i (Int.inc i)))
+      out))
+
+  (doc fix-source "applies every registered fix to `src` and returns
+the rewritten source. Findings whose rule has no fix, and fixes that
+overlap one already applied, are left alone; the rewrite is repeated
+until it reaches a fixpoint. Only the bytes of fixed forms change, so
+formatting and comments elsewhere are preserved. A parse error is
+returned as such, and clean input comes back byte-identical.")
+  (defn fix-source [src]
+    (match (Reader.parse src)
+      (Result.Success _) (Result.Success (fix-loop &(fn [_] true) @src))
+      (Result.Error e) (Result.Error e)))
+
+  (doc fix-source-with "like `fix-source`, but only applies fixes whose
+rule names satisfy `keep?`.")
+  (defn fix-source-with [keep? src]
+    (match (Reader.parse src)
+      (Result.Success _) (Result.Success (fix-loop keep? @src))
+      (Result.Error e) (Result.Error e)))
+
   (private -register-builtins)
   (hidden -register-builtins)
   (def -register-builtins
     (do
-      (register-pattern-rule! @"lonely-do"
-                              @"(do x) is just x"
-                              "(do ?x)"
-                              @"(do x) is just x")
+      (register-pattern-fix-rule! @"lonely-do"
+                                  @"(do x) is just x"
+                                  "(do ?x)"
+                                  @"(do x) is just x"
+                                  @"?x")
       (register-pattern-rule! @"empty-do"
                               @"(do) has no body"
                               "(do)"
@@ -672,25 +995,29 @@ names satisfy `keep?`.")
       (register-rule! @"form-with-do"
                       @"(let|while|when|unless ... (do ...)) should use the matching -do variant"
                       rule-form-with-do)
-      (register-pattern-rule! @"when-with-not"
-                              @"(when (not c) x) → (unless c x)"
-                              "(when (not ?c) ?x)"
-                              @"(when (not c) x) can be (unless c x)")
-      (register-pattern-rule! @"when-with-not"
-                              @"(unless (not c) x) → (when c x)"
-                              "(unless (not ?c) ?x)"
-                              @"(unless (not c) x) can be (when c x)")
+      (register-pattern-fix-rule! @"when-with-not"
+                                  @"(when (not c) x) → (unless c x)"
+                                  "(when (not ?c) ?x)"
+                                  @"(when (not c) x) can be (unless c x)"
+                                  @"(unless ?c ?x)")
+      (register-pattern-fix-rule! @"when-with-not"
+                                  @"(unless (not c) x) → (when c x)"
+                                  "(unless (not ?c) ?x)"
+                                  @"(unless (not c) x) can be (when c x)"
+                                  @"(when ?c ?x)")
       (register-rule! @"when-with-not"
                       @"(when-do (not c) ...) → (unless-do c ...); (unless-do (not c) ...) → (when-do c ...)"
                       rule-when-do-with-not)
-      (register-pattern-rule! @"not-equal"
-                              @"(not (= a b)) is just (/= a b)"
-                              "(not (= ?a ?b))"
-                              @"(not (= a b)) is just (/= a b)")
-      (register-pattern-rule! @"double-not"
-                              @"(not (not x)) is just x"
-                              "(not (not ?x))"
-                              @"(not (not x)) is just x")
+      (register-pattern-fix-rule! @"not-equal"
+                                  @"(not (= a b)) is just (/= a b)"
+                                  "(not (= ?a ?b))"
+                                  @"(not (= a b)) is just (/= a b)"
+                                  @"(/= ?a ?b)")
+      (register-pattern-fix-rule! @"double-not"
+                                  @"(not (not x)) is just x"
+                                  "(not (not ?x))"
+                                  @"(not (not x)) is just x"
+                                  @"?x")
       (register-pattern-rule! @"set-self"
                               @"(set! x x) is a no-op"
                               "(set! ?x ?x)"
@@ -708,10 +1035,11 @@ names satisfy `keep?`.")
                               @"(if cond x x) — both branches are identical"
                               "(if ?c ?x ?x)"
                               @"(if cond x x) — both branches are identical; the condition is pointless")
-      (register-pattern-rule! @"empty-let-bindings"
-                              @"(let [] body) — empty bindings; just use body directly"
-                              "(let [] ?x)"
-                              @"(let [] body) has no bindings; the let is unnecessary")
+      (register-pattern-fix-rule! @"empty-let-bindings"
+                                  @"(let [] body) — empty bindings; just use body directly"
+                                  "(let [] ?x)"
+                                  @"(let [] body) has no bindings; the let is unnecessary"
+                                  @"?x")
       (register-rule! @"nested-if-chain"
                       @"(if c1 x (if c2 ...)) can be a cond expression"
                       rule-nested-if-chain)
@@ -727,7 +1055,9 @@ names satisfy `keep?`.")
                               "(Maybe.unsafe-from ?x)"
                               @"Maybe.unsafe-from can crash on Nothing; use match or from instead")
       (register-rule! @"eq-true" @"(= x true) is just x" rule-eq-true)
+      (register-fix! @"eq-true" fix-eq-true)
       (register-rule! @"eq-false" @"(= x false) is just (not x)" rule-eq-false)
+      (register-fix! @"eq-false" fix-eq-false)
       (register-rule! @"cond-single-branch"
                       @"(cond c v default) is just (if c v default)"
                       rule-cond-single-branch)

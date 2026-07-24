@@ -4,10 +4,10 @@
 
 (private print-diags!)
 (hidden print-diags!)
-(defn print-diags! [path diags]
+(defn print-diags! [path diags err?]
   (for [i 0 (Array.length diags)]
-    (let [d (Array.unsafe-nth diags i)]
-      (IO.println &(fmt "%s:%s" path &(Diagnostic.str d))))))
+    (let [line (fmt "%s:%s" path &(Diagnostic.str (Array.unsafe-nth diags i)))]
+      (if err? (IO.errorln &line) (IO.println &line)))))
 
 (private lint-file!)
 (hidden lint-file!)
@@ -24,8 +24,48 @@
             1)
         (Result.Success diags)
           (do
-            (print-diags! path &diags)
+            (print-diags! path &diags false)
             (if (Int.= 0 (Array.length &diags)) 0 1)))))
+
+(private report-remaining!)
+(hidden report-remaining!)
+(defn report-remaining! [path src keep? err?]
+  (match (Lint.lint-source-with keep? src)
+    (Result.Error _) 1
+    (Result.Success diags)
+      (do
+        (print-diags! path &diags err?)
+        (if (Int.= 0 (Array.length &diags)) 0 1))))
+
+(private write-or-error!)
+(hidden write-or-error!)
+(defn write-or-error! [path content]
+  (match (IO.write-file content path)
+    (Result.Error e)
+      (do (IO.errorln &(fmt "%s: cannot write file: %s" path &e)) false)
+    (Result.Success _) true))
+
+(private fix-file!)
+(hidden fix-file!)
+(defn fix-file! [path keep? dry-run]
+  (match (IO.read->EOF path)
+    (Result.Error e)
+      (do (IO.errorln &(fmt "%s: cannot read file: %s" path &e)) 1)
+    (Result.Success src)
+      (match (Lint.fix-source-with keep? &src)
+        (Result.Error pe)
+          (do
+            (IO.errorln
+              &(fmt "%s: parse error: %s" path &(Parser.format-error &pe)))
+            1)
+        (Result.Success fixed)
+          (cond
+            dry-run
+              (do (IO.print &fixed) (report-remaining! path &fixed keep? true))
+            (= &fixed &src) (report-remaining! path &fixed keep? false)
+            (write-or-error! path &fixed)
+              (report-remaining! path &fixed keep? false)
+            1))))
 
 (private print-help!)
 (hidden print-help!)
@@ -37,6 +77,8 @@
     (IO.println "  --only RULES        comma-separated allow-list")
     (IO.println "  --disable RULES     comma-separated deny-list")
     (IO.println "  --rules FILE        load pattern rules from FILE")
+    (IO.println "  --fix               rewrite fixable findings in place")
+    (IO.println "  --dry-run           with --fix: print the result instead")
     (IO.println "  --list-rules        print registered rules and exit")
     (IO.println "  -h, --help          show this help")))
 
@@ -46,8 +88,10 @@
   (let-do [rs (Lint.list-rules)
            n (Array.length &rs)]
     (for [i 0 n]
-      (let [r (Array.unsafe-nth &rs i)]
-        (IO.println &(fmt "%-24s %s" (Rule.name r) (Rule.description r)))))))
+      (let [r (Array.unsafe-nth &rs i)
+            tag (if (Lint.fixable? (Rule.name r)) @"[fix]" @"")]
+        (IO.println
+          &(fmt "%-24s %-5s %s" (Rule.name r) &tag (Rule.description r)))))))
 
 (private keep?)
 (hidden keep?)
@@ -64,12 +108,16 @@
            files (the (Array String) [])
            list-rules false
            show-help false
+           fix false
+           dry-run false
            i 1]
     (while (Int.< i argc)
       (let-do [a (StaticArray.unsafe-nth &System.args i)]
         (cond
           (or (= a "-h") (= a "--help")) (set! show-help true)
           (= a "--list-rules") (set! list-rules true)
+          (= a "--fix") (set! fix true)
+          (= a "--dry-run") (set! dry-run true)
           (= a "--only")
             (do
               (set! i (Int.inc i))
@@ -123,7 +171,9 @@
              pred? (fn [name] (keep? &only-set &disable-set name))]
       (for [j 0 (Array.length &files)]
         (let [path (Array.unsafe-nth &files j)
-              rc (lint-file! path &pred?)]
+              rc (if fix
+                (fix-file! path &pred? dry-run)
+                (lint-file! path &pred?))]
           (when (Int.> rc code) (set! code rc))))
       (System.exit code)
       ())))
