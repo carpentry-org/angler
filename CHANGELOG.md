@@ -5,6 +5,23 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Added `--fix`: rewrite findings in place instead of only reporting
+  them. Eight rewrites are available — `lonely-do`, `double-not`,
+  `not-equal`, `when-with-not` (both directions), `empty-let-bindings`,
+  `eq-true` and `eq-false`. Only the bytes of the fixed forms change,
+  so comments and formatting elsewhere in the file are untouched, a
+  fix that would lift an `unquote-splicing` form (`%@…`) out of its
+  enclosing list is left alone, and a file with nothing to fix is not
+  written at all. Rules with no rewrite are still reported, and `--fix`
+  exits non-zero if any finding is left over. `--fix --dry-run` prints
+  the result instead of writing it.
+- `--list-rules` now marks which rules `--fix` can rewrite.
+- Added `Lint.fix-source` and `Lint.fix-source-with` for fixing from
+  Carp code, plus `Lint.register-fix!`,
+  `Lint.register-pattern-fix-rule!` and `Lint.fixable?` for teaching
+  new rules how to rewrite.
+- Pattern rules loaded from a file can now carry a rewrite template as
+  a fourth element: `[<pattern> "name" "message" <template>]`.
 - Report a parse error for source containing invalid string escape
   sequences, which were previously accepted silently.
 - Fixed `when-with-not` to handle `when-do`/`unless-do` variants (now

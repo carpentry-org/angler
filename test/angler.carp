@@ -65,6 +65,9 @@
                                  @"test pattern matched")
     0))
 
+(defn fix! [src]
+  (match (Lint.fix-source src) (Result.Success s) s (Result.Error _) @""))
+
 (defn lint-output [src]
   (let-do [diags (lint! src)
            out @""
@@ -470,4 +473,143 @@
   (assert-equal t
     28
     (Array.length &(Lint.list-rules))
-    "26 previous + 2 loaded from source = 28"))
+    "26 previous + 2 loaded from source = 28")
+
+  (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
+  (assert-equal t
+    "(/= a b)"
+    &(fix! "(not (= a b))")
+    "not-equal fix rewrites to /=")
+  (assert-equal t "x" &(fix! "(not (not  x))") "double-not fix unwraps twice")
+  (assert-equal t
+    "(unless c x)"
+    &(fix! "(when (not c) x)")
+    "when-with-not fix rewrites when to unless")
+  (assert-equal t
+    "(when c x)"
+    &(fix! "(unless (not c) x)")
+    "when-with-not fix rewrites unless to when")
+  (assert-equal t
+    "x"
+    &(fix! "(let [] x)")
+    "empty-let-bindings fix drops the let")
+  (assert-equal t "x" &(fix! "(= x true)") "eq-true fix keeps the left operand")
+  (assert-equal t "x" &(fix! "(= true x)") "eq-true fix keeps the right operand")
+  (assert-equal t
+    "(not x)"
+    &(fix! "(= x false)")
+    "eq-false fix wraps the operand in not")
+  (assert-equal t
+    "(not y)"
+    &(fix! "(= false y)")
+    "eq-false fix wraps the right operand in not")
+
+  (assert-equal t
+    "x"
+    &(fix! "(do (do x))")
+    "nested findings converge on a later pass")
+  (assert-equal t
+    "(/= a b)"
+    &(fix! "(not (not (not (= a b))))")
+    "double-not and not-equal compose across passes")
+
+  (assert-equal t
+    "(defn add [a b] (Int.+ a b))"
+    &(fix! "(defn add [a b] (Int.+ a b))")
+    "source without findings comes back byte-identical")
+  (assert-equal t
+    "(defn FooBar [] 1)"
+    &(fix! "(defn FooBar [] 1)")
+    "rule without a registered fix leaves the source untouched")
+  (assert-true t
+    (has-rule? "(defn FooBar [] 1)" "non-kebab-case-defn")
+    "rule without a registered fix still reports its diagnostic")
+
+  (assert-equal t "; head
+x ; tail
+  (unless c y)" &(fix! "; head
+(do   x) ; tail
+  (when (not c) y)") "fixes preserve surrounding comments and indentation")
+  (assert-equal t "(unless c (foo
+    bar))" &(fix! "(when (not c)
+  (foo
+    bar))") "a spliced sub-form keeps its own line breaks")
+  (assert-equal t "(do ; hi
+)" &(fix! "(do ; hi
+)") "a metavariable bound to a comment is not fixed")
+
+  (assert-equal t
+    "@x"
+    &(fix! "(do @x)")
+    "reader-macro forms survive being spliced as a body")
+
+  (assert-true t
+    (has-rule? "(do %@forms)" "lonely-do")
+    "lonely-do still reports an unquote-splicing body")
+  (assert-equal t
+    "(do %@forms)"
+    &(fix! "(do %@forms)")
+    "unwrapping an unquote-splicing body is refused")
+  (assert-true t
+    (has-rule? "(= %@forms true)" "eq-true")
+    "eq-true still reports an unquote-splicing operand")
+  (assert-equal t
+    "(= %@forms true)"
+    &(fix! "(= %@forms true)")
+    "unwrapping an unquote-splicing operand is refused")
+
+  (assert-true t
+    (match (Lint.fix-source "(do")
+      (Result.Error _) true
+      (Result.Success _) false)
+    "fix-source surfaces a parse error")
+
+  (assert-equal t
+    "(do x)"
+    &(match (Lint.fix-source-with &(fn [n] (/= n "lonely-do")) "(do x)")
+      (Result.Success s) s
+      (Result.Error _) @"")
+    "fix-source-with honours a disabled rule")
+  (assert-equal t
+    "x"
+    &(match (Lint.fix-source-with &(fn [n] (= n "lonely-do")) "(do x)")
+      (Result.Success s) s
+      (Result.Error _) @"")
+    "fix-source-with honours an allow-list")
+
+  (assert-true t (Lint.fixable? "lonely-do") "lonely-do is fixable")
+  (assert-false t
+    (Lint.fixable? "non-kebab-case-defn")
+    "non-kebab-case-defn is not fixable")
+  (assert-false t
+    (Lint.fixable? "identical-if-branches")
+    "identical-if-branches is deliberately not fixable")
+
+  (assert-true t
+    (match (Lint.load-rules-from-source!
+        "[(identity ?x) \"identity-fix\" \"identity is a no-op\" ?x]")
+      (Result.Success n) (Int.= 1 n)
+      _ false)
+    "loads a rule with a fix template from source")
+  (assert-true t
+    (has-rule? "(identity 42)" "identity-fix")
+    "loaded fixable rule fires")
+  (assert-equal t
+    "42"
+    &(fix! "(identity 42)")
+    "loaded fixable rule rewrites via its template")
+  (assert-equal t
+    29
+    (Array.length &(Lint.list-rules))
+    "28 previous + 1 loaded with a template = 29")
+
+  (assert-true t
+    (match (Lint.load-rules-from-source!
+        "[(?a ?b) \"swap-pair\" \"swap the operands\" (?b ?a)]")
+      (Result.Success n) (Int.= 1 n)
+      _ false)
+    "loads a rule whose template can bind a synthesized node")
+  (assert-equal t
+    "@x"
+    &(fix! "@x")
+    "a metavariable bound to a synthesized node is not fixed"))
