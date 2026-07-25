@@ -68,6 +68,8 @@
 (defn fix! [src]
   (match (Lint.fix-source src) (Result.Success s) s (Result.Error _) @""))
 
+(defn fixed-point? [src] (let [once (fix! src)] (= &once &(fix! &once))))
+
 (defn lint-output [src]
   (let-do [diags (lint! src)
            out @""
@@ -558,6 +560,151 @@ x ; tail
     &(fix! "(= %@forms true)")
     "unwrapping an unquote-splicing operand is refused")
 
+  (assert-equal t
+    "(let-do [x 1] a b)"
+    &(fix! "(let [x 1] (do a b))")
+    "form-with-do fix splices the do body into let-do")
+  (assert-equal t
+    "(while-do c x y)"
+    &(fix! "(while c (do x y))")
+    "form-with-do fix rewrites while to while-do")
+  (assert-equal t
+    "(when-do c x y)"
+    &(fix! "(when c (do x y))")
+    "form-with-do fix rewrites when to when-do")
+  (assert-equal t
+    "(unless-do c x y)"
+    &(fix! "(unless c (do x y))")
+    "form-with-do fix rewrites unless to unless-do")
+  (assert-equal t "(let-do [x 1]
+    a
+    b)" &(fix! "(let [x 1]
+  (do
+    a
+    b))") "a multi-line do body stays multi-line")
+  (assert-equal t "(let-do [x 1] ; why
+    a)" &(fix! "(let [x 1]
+  (do ; why
+    a))") "a comment inside the spliced body survives")
+  (assert-equal t
+    "( let-do [x 1] a b)"
+    &(fix! "( let [x 1] (do a b))")
+    "the bytes between the paren and the head are kept")
+
+  (assert-equal t
+    "(let-do [x 1] a b)"
+    &(fix! "(let-do [x 1] (do a b))")
+    "redundant-do-in-do-variant fix drops the inner do")
+  (assert-equal t
+    "(while-do c a b)"
+    &(fix! "(while-do c (do a b))")
+    "redundant-do-in-do-variant fix works for while-do")
+  (assert-equal t
+    "(unless-do c a b)"
+    &(fix! "(unless-do c (do a b))")
+    "redundant-do-in-do-variant fix works for unless-do")
+
+  (assert-equal t
+    "(when-do c a b)"
+    &(fix! "(if c (do a b) ())")
+    "if-with-do fix rewrites to when-do")
+  (assert-equal t
+    "(unless-do c a b)"
+    &(fix! "(if c () (do a b))")
+    "if-with-do fix rewrites to unless-do")
+  (assert-equal t "(when-do c
+    a
+    b)" &(fix! "(if c
+  (do
+    a
+    b)
+  ())") "if-with-do keeps a multi-line body multi-line")
+  (assert-equal t "(unless-do c
+    a
+    b)" &(fix! "(if c
+  ()
+  (do
+    a
+    b))") "if-with-do drops the empty then-branch across lines")
+
+  (assert-equal t
+    "(when c x)"
+    &(fix! "(if c x ())")
+    "if-one-branch-empty fix rewrites to when")
+  (assert-equal t
+    "(unless c x)"
+    &(fix! "(if c () x)")
+    "if-one-branch-empty fix rewrites to unless")
+  (assert-equal t "(when c
+  (foo
+    bar))" &(fix! "(if c
+  (foo
+    bar)
+  ())") "if-one-branch-empty keeps the kept branch's line breaks")
+  (assert-equal t "(unless c
+  (foo
+    bar))" &(fix! "(if c
+  ()
+  (foo
+    bar))") "if-one-branch-empty moves the else branch verbatim")
+
+  (assert-equal t
+    "(if c v default)"
+    &(fix! "(cond c v default)")
+    "cond-single-branch fix rewrites to if")
+  (assert-equal t "(if c
+  v
+  default)" &(fix! "(cond c
+  v
+  default)") "cond-single-branch keeps the branches where they are")
+
+  (assert-equal t "()" &(fix! "(do)") "empty-do fix rewrites to unit")
+
+  (assert-equal t
+    "(let-do [x 1] a)"
+    &(fix! "(let [x 1] (do (do a)))")
+    "nested do-forms converge to a single let-do")
+  (assert-equal t
+    "(when-do c a)"
+    &(fix! "(if c (do (do a)) ())")
+    "if-with-do converges with the inner lonely-do")
+  (assert-equal t
+    "(let-do [x 1] (let-do [y 2] a))"
+    &(fix! "(let [x 1] (do (let [y 2] (do a))))")
+    "an inner form-with-do is fixed along with the outer one")
+  (assert-equal t
+    "(unless-do c a b)"
+    &(fix! "(when (not c) (do a b))")
+    "when-with-not and form-with-do compose across passes")
+
+  (assert-true t
+    (fixed-point? "(let [x 1] (do (do a)))")
+    "fixing a nested do twice equals fixing it once")
+  (assert-true t
+    (fixed-point? "(if c (do a b) ())")
+    "fixing if-with-do twice equals fixing it once")
+  (assert-true t
+    (fixed-point? "(if c x ())")
+    "fixing if-one-branch-empty twice equals fixing it once")
+
+  (assert-equal t
+    "(let [x 1] ())"
+    &(fix! "(let [x 1] (do))")
+    "an empty do body is not spliced; empty-do rewrites it instead")
+  (assert-equal t "(let [x 1] (do ; hi
+))" &(fix! "(let [x 1] (do ; hi
+))") "a do body of nothing but a comment is not spliced")
+  (assert-equal t "(cond ; hi
+  c v)" &(fix! "(cond ; hi
+  c v)") "a comment among cond's own children refuses the rewrite")
+  (assert-equal t "(if c () ; hi
+)" &(fix! "(if c () ; hi
+)") "a comment in place of a branch refuses the rewrite")
+  (assert-equal t
+    "(let-do [x 1] %@forms)"
+    &(fix! "(let [x 1] (do %@forms))")
+    "a spliced unquote-splicing body keeps an enclosing list")
+
   (assert-true t
     (match (Lint.fix-source "(do")
       (Result.Error _) true
@@ -578,6 +725,24 @@ x ; tail
     "fix-source-with honours an allow-list")
 
   (assert-true t (Lint.fixable? "lonely-do") "lonely-do is fixable")
+  (assert-true t (Lint.fixable? "form-with-do") "form-with-do is fixable")
+  (assert-true t
+    (Lint.fixable? "redundant-do-in-do-variant")
+    "redundant-do-in-do-variant is fixable")
+  (assert-true t (Lint.fixable? "if-with-do") "if-with-do is fixable")
+  (assert-true t
+    (Lint.fixable? "if-one-branch-empty")
+    "if-one-branch-empty is fixable")
+  (assert-true t
+    (Lint.fixable? "cond-single-branch")
+    "cond-single-branch is fixable")
+  (assert-true t (Lint.fixable? "empty-do") "empty-do is fixable")
+  (assert-false t
+    (Lint.fixable? "nested-if-chain")
+    "nested-if-chain is deliberately not fixable")
+  (assert-false t
+    (Lint.fixable? "single-use-let")
+    "single-use-let is deliberately not fixable")
   (assert-false t
     (Lint.fixable? "non-kebab-case-defn")
     "non-kebab-case-defn is not fixable")
