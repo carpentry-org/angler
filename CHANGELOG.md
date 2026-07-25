@@ -3,6 +3,14 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- A `?` in a rewrite template only starts a metavariable when a name
+  character follows it. Templates that name a predicate — say
+  `(unless (empty? ?x) ?y)` — used to report their finding and then
+  silently leave the source untouched; `--fix` now applies them.
+  Affects `--rules` files and `Lint.register-pattern-fix-rule!` alike.
+
 ## [0.4.0]
 
 - `--fix` can now rewrite the findings that restructure a form:

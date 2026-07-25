@@ -463,6 +463,13 @@ called `name`.")
           (and (Char.>= c \A) (Char.<= c \Z)))
       (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
 
+  (private metavar-start?)
+  (hidden metavar-start?)
+  (defn metavar-start? [tpl i n]
+    (and (Int.< (Int.inc i) n)
+         (and (Char.= \? (String.char-at tpl i))
+              (name-byte? (String.char-at tpl (Int.inc i))))))
+
   (private metavar-end)
   (hidden metavar-end)
   (defn metavar-end [tpl start n]
@@ -475,7 +482,7 @@ called `name`.")
   (hidden literal-end)
   (defn literal-end [tpl start n]
     (let-do [j start]
-      (while (and (Int.< j n) (not (Char.= \? (String.char-at tpl j))))
+      (while (and (Int.< j n) (not (metavar-start? tpl j n)))
         (set! j (Int.inc j)))
       j))
 
@@ -486,11 +493,9 @@ called `name`.")
              n (String.length tpl)
              i 0
              ok true
-             lone? (and (Int.> n 1)
-                        (and (Char.= \? (String.char-at tpl 0))
-                             (Int.= n (metavar-end tpl 0 n))))]
+             lone? (and (metavar-start? tpl 0 n) (Int.= n (metavar-end tpl 0 n)))]
       (while-do (and ok (Int.< i n))
-        (let-do [meta? (Char.= \? (String.char-at tpl i))
+        (let-do [meta? (metavar-start? tpl i n)
                  j (if meta? (metavar-end tpl i n) (literal-end tpl i n))
                  chunk (String.byte-slice tpl i j)]
           (if meta?
@@ -523,7 +528,9 @@ called `name`.")
   (doc register-pattern-fix-rule! "is `register-pattern-rule!` plus a
 rewrite: `template-str` is source text in which every `?name` is
 replaced by the *original bytes* the metavariable matched, and the
-matched node is replaced by the result.
+matched node is replaced by the result. A `?` that is not followed by
+a name character is literal text, so `(unless (empty? ?x) ?y)` is a
+valid template.
 
 ```
 (Lint.register-pattern-fix-rule! @\"double-not\"

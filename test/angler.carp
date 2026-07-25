@@ -770,6 +770,44 @@ x ; tail
 
   (assert-true t
     (match (Lint.load-rules-from-source!
+        "[(PRED ?x ?y) \"pred-template\" \"names a predicate\" (unless (empty? ?x) ?y)]
+[(BAREQ ?x) \"bare-q\" \"ends in a bare ?\" (huh ?x ?)]
+[(ONLYQ ?x) \"only-q\" \"is a bare ?\" ?]
+[(QEND ?x) \"q-end\" \"is a lone predicate name\" empty?]
+[(QAM ?x) \"q-after-meta\" \"is a metavariable then a ?\" (f ?x?)]
+[(QSTR ?x) \"q-in-string\" \"has a ? inside a string\" (IO.println \"huh?\" ?x)]
+[(UNB ?x) \"unbound-meta\" \"names an unbound metavariable\" (f ?y)]")
+      (Result.Success n) (Int.= 7 n)
+      _ false)
+    "loads rules whose templates hold a ? outside a metavariable")
+  (assert-equal t
+    "(unless (empty? a) b)"
+    &(fix! "(PRED a b)")
+    "a ? inside a symbol name is literal template text")
+  (assert-equal t
+    "(huh a ?)"
+    &(fix! "(BAREQ a)")
+    "a bare ? in a template is literal text")
+  (assert-equal t "?" &(fix! "(ONLYQ a)") "a template of nothing but ? expands")
+  (assert-equal t
+    "empty?"
+    &(fix! "(QEND a)")
+    "a ? as the last byte of a template is literal text")
+  (assert-equal t
+    "(f a?)"
+    &(fix! "(QAM a)")
+    "a ? right after a metavariable is literal text")
+  (assert-equal t
+    "(IO.println \"huh?\" a)"
+    &(fix! "(QSTR a)")
+    "a ? inside a string literal is literal text")
+  (assert-equal t
+    "(UNB a)"
+    &(fix! "(UNB a)")
+    "a template naming an unbound metavariable still refuses to rewrite")
+
+  (assert-true t
+    (match (Lint.load-rules-from-source!
         "[(?a ?b) \"swap-pair\" \"swap the operands\" (?b ?a)]")
       (Result.Success n) (Int.= 1 n)
       _ false)
