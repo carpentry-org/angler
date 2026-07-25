@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [0.4.0]
 
 - `--fix` can now rewrite the findings that restructure a form:
   `form-with-do` (`(let … (do …))` becomes `(let-do … …)`, likewise for
@@ -33,6 +33,9 @@ the project follows [Semantic Versioning](https://semver.org/).
   a fourth element: `[<pattern> "name" "message" <template>]`.
 - Report a parse error for source containing invalid string escape
   sequences, which were previously accepted silently.
+
+## [0.3.0]
+
 - Fixed `when-with-not` to handle `when-do`/`unless-do` variants (now
   correctly suggests `unless-do`/`when-do` instead of the non-`do`
   counterparts).
@@ -47,6 +50,9 @@ the project follows [Semantic Versioning](https://semver.org/).
   `empty-let-bindings` (`let [] body`), `nested-if-chain` (deeply nested
   if-else suggesting `cond`), and `redundant-do-in-do-variant` (`while-do cond
   (do ...)`).
+
+## [0.2.0]
+
 - Added `Lint.load-rules-from-source!`: load pattern rules from a
   string at runtime. Each rule is an array literal
   `[<pattern> "name" "message"]` — no recompilation needed.

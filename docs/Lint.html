@@ -49,6 +49,74 @@ for the rule-author guide.</p>
 
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#fix-source">
+                        <h3 id="fix-source">
+                            fix-source
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref String a)] (Result String ParseErr))
+                    </p>
+                    <pre class="args">
+                        (fix-source src)
+                    </pre>
+                    <p class="doc">
+                        <p>applies every registered fix to <code>src</code> and returns
+the rewritten source. Findings whose rule has no fix, and fixes that
+overlap one already applied, are left alone; the rewrite is repeated
+until it reaches a fixpoint or a fixed pass limit. Only the bytes of
+fixed forms change, so formatting and comments elsewhere are
+preserved. A parse error is returned as such, and clean input comes
+back byte-identical.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#fix-source-with">
+                        <h3 id="fix-source-with">
+                            fix-source-with
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref (Fn [(Ref String StaticLifetime)] Bool) a), (Ref String b)] (Result String ParseErr))
+                    </p>
+                    <pre class="args">
+                        (fix-source-with keep? src)
+                    </pre>
+                    <p class="doc">
+                        <p>like <code>fix-source</code>, but only applies fixes whose
+rule names satisfy <code>keep?</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#fixable?">
+                        <h3 id="fixable?">
+                            fixable?
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref String StaticLifetime)] Bool)
+                    </p>
+                    <pre class="args">
+                        (fixable? name)
+                    </pre>
+                    <p class="doc">
+                        <p>true iff at least one fix is registered for the rule
+called <code>name</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#lint">
                         <h3 id="lint">
                             lint
@@ -221,6 +289,84 @@ a <code>Form.Sym</code> matching <code>name</code>.</p>
                         <p>pulls the <code>Form</code> out of the i-th <code>Located</code> child of
 an <code>Array (Box Located)</code>. Most rules want the structural shape, not
 the position, when descending into a compound form's children.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#nth-located">
+                        <h3 id="nth-located">
+                            nth-located
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref (Array (Box a)) b), Int] (Ref a b))
+                    </p>
+                    <pre class="args">
+                        (nth-located items i)
+                    </pre>
+                    <p class="doc">
+                        <p>returns the i-th <code>Located</code> child of an <code>Array (Box Located)</code>. Use it over <code>nth-form</code> when a rule or fix needs the child's
+source position as well as its shape.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#register-fix!">
+                        <h3 id="register-fix!">
+                            register-fix!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String, (Fn [(Ref Located a), (Ref String b)] (Maybe Fix))] ())
+                    </p>
+                    <pre class="args">
+                        (register-fix! name fn)
+                    </pre>
+                    <p class="doc">
+                        <p>registers a rewrite for the rule called <code>name</code>.
+<code>fn</code> receives a node the rule fired on and the full source it came
+from, and returns the <code>Fix</code> to apply, or <code>Nothing</code> if this particular
+node has no rewrite that is certainly semantics-preserving.</p>
+<p>Several fixes may share a rule name; the first one to return <code>Just</code>
+wins. A rule without a fix is reported by <code>lint</code> exactly as before and
+skipped by <code>fix-source</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#register-pattern-fix-rule!">
+                        <h3 id="register-pattern-fix-rule!">
+                            register-pattern-fix-rule!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String, String, (Ref String a), String, String] ())
+                    </p>
+                    <pre class="args">
+                        (register-pattern-fix-rule! name description pattern-str message template)
+                    </pre>
+                    <p class="doc">
+                        <p>is <code>register-pattern-rule!</code> plus a
+rewrite: <code>template-str</code> is source text in which every <code>?name</code> is
+replaced by the <em>original bytes</em> the metavariable matched, and the
+matched node is replaced by the result.</p>
+<pre><code>(Lint.register-pattern-fix-rule! @&quot;double-not&quot;
+                                 @&quot;(not (not x)) is just x&quot;
+                                 &quot;(not (not ?x))&quot;
+                                 @&quot;(not (not x)) is just x&quot;
+                                 @&quot;?x&quot;)
+</code></pre>
+<p>Only register a template that is unconditionally
+semantics-preserving: <code>fix-source</code> applies it without asking.</p>
 
                     </p>
                 </div>
