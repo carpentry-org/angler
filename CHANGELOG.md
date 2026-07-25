@@ -5,6 +5,15 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- `--fix` can now rewrite the findings that restructure a form:
+  `form-with-do` (`(let … (do …))` becomes `(let-do … …)`, likewise for
+  `while`, `when` and `unless`), `redundant-do-in-do-variant`,
+  `if-with-do` (`(if c (do …) ())` becomes `(when-do c …)`, and the
+  `unless-do` direction), `if-one-branch-empty` (`(if c x ())` becomes
+  `(when c x)`, and the `unless` direction), `cond-single-branch` and
+  `empty-do`. The body is spliced in as the bytes it already was, so a
+  multi-line body stays multi-line and keeps its comments; only the
+  indentation of the spliced lines is left for `carp-fmt` to sort out.
 - Added `--fix`: rewrite findings in place instead of only reporting
   them. Eight rewrites are available — `lonely-do`, `double-not`,
   `not-equal`, `when-with-not` (both directions), `empty-let-bindings`,

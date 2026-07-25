@@ -326,6 +326,135 @@ called `name`.")
         (Maybe.Just s) (rewrite l src (String.concat &[@prefix s @suffix]))
         (Maybe.Nothing) (Maybe.Nothing))))
 
+  (private all-splicable?)
+  (hidden all-splicable?)
+  (defn all-splicable? [items src]
+    (let-do [ok true]
+      (for [i 0 (Array.length items)]
+        (unless (splicable? (nth-located items i) src) (set! ok false)))
+      ok))
+
+  (private parts-in-order?)
+  (hidden parts-in-order?)
+  (defn parts-in-order? [parts lo hi]
+    (let-do [ok true
+             at lo]
+      (for [i 0 (Array.length parts)]
+        (let [p (Array.unsafe-nth parts i)]
+          (if (and (Int.<= at @(Pair.a p)) (Int.<= @(Pair.a p) @(Pair.b p)))
+            (set! at @(Pair.b p))
+            (set! ok false))))
+      (and ok (Int.<= at hi))))
+
+  (private copy-parts)
+  (hidden copy-parts)
+  (defn copy-parts [src parts]
+    (let-do [out @""]
+      (for [i 0 (Array.length parts)]
+        (let [p (Array.unsafe-nth parts i)]
+          (set! out
+                (String.append &out
+                               &(String.byte-slice src @(Pair.a p) @(Pair.b p))))))
+      out))
+
+  (private head-end)
+  (hidden head-end)
+  ; 0 for a form that has no head token; `parts-in-order?` then rejects
+  ; the rewrite, since a list's own bytes start at 1 or later.
+  (defn head-end [l]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (Int.> (Array.length items) 0)
+          @(Info.pos (Located.end (nth-located items 0)))
+          0)
+      _ 0))
+
+  (private rebuild)
+  (hidden rebuild)
+  ; rebuilds `l` as its opening bytes, then `head` in place of its head
+  ; token, then each `(Pair from to)` of `parts` copied out of `src`
+  ; verbatim.
+  (defn rebuild [l src head parts]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.> (Array.length items) 0)
+                 (and (splicable? l src) (all-splicable? items src)))
+          (let [from @(Info.pos (Located.info l))
+                hd @(Info.pos (Located.info (nth-located items 0)))
+                to @(Info.pos (Located.end l))]
+            (if (and (Int.<= from hd) (parts-in-order? parts hd to))
+              (rewrite l
+                       src
+                       (String.concat
+                         &[(String.byte-slice src from hd)
+                           @head
+                           (copy-parts src parts)]))
+              (Maybe.Nothing)))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
+  (private body-forms?)
+  (hidden body-forms?)
+  ; a body of nothing but comments would splice away to nothing.
+  (defn body-forms? [items]
+    (let-do [found false]
+      (for [i 1 (Array.length items)]
+        (unless (comment? (nth-form items i)) (set! found true)))
+      found))
+
+  (private splice-fix)
+  (hidden splice-fix)
+  ; rewrites `(HEAD keep inner …)` as `head`, `keep`, and `inner`'s body
+  ; of arbitrary arity spliced in. Without `keep-tail?` everything
+  ; between `inner` and the closing paren is dropped.
+  (defn splice-fix [l src head keep inner keep-tail?]
+    (match-ref (Located.form inner)
+      (Form.Lst body)
+        (if (and (Int.> (Array.length body) 1)
+                 (and (splicable? inner src) (body-forms? body)))
+          (let [ih (nth-located body 0)
+                inner-end @(Info.pos (Located.end inner))
+                l-end @(Info.pos (Located.end l))]
+            (if (splicable? ih src)
+              (rebuild l
+                       src
+                       head
+                       &[(Pair.init (head-end l) @(Info.pos (Located.end keep)))
+                         (Pair.init @(Info.pos (Located.end ih))
+                                    (Int.dec inner-end))
+                         (Pair.init
+                           (if keep-tail? inner-end (Int.dec l-end))
+                           l-end)])
+              (Maybe.Nothing)))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
+  (private rehead-fix)
+  (hidden rehead-fix)
+  (defn rehead-fix [l src head]
+    (rebuild l src head &[(Pair.init (head-end l) @(Info.pos (Located.end l)))]))
+
+  (private drop-child-fix)
+  (hidden drop-child-fix)
+  (defn drop-child-fix [l src head idx]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (let [n (Array.length items)]
+          (if (and (Int.> idx 0) (Int.< idx n))
+            (let [l-end @(Info.pos (Located.end l))
+                  kept-end @(Info.pos
+                    (Located.end (nth-located items (Int.dec idx))))
+                  after (if (Int.= idx (Int.dec n))
+                    (Int.dec l-end)
+                    @(Info.pos (Located.end (nth-located items idx))))]
+              (rebuild l
+                       src
+                       head
+                       &[(Pair.init (head-end l) kept-end)
+                         (Pair.init after l-end)]))
+            (Maybe.Nothing)))
+      _ (Maybe.Nothing)))
+
   (private name-byte?)
   (hidden name-byte?)
   (defn name-byte? [c]
@@ -493,6 +622,33 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private fix-if-with-do)
+  (hidden fix-if-with-do)
+  (defn fix-if-with-do [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.= 4 (Array.length items)) (sym? (nth-form items 0) "if"))
+          (let [then-form (nth-form items 2)
+                else-form (nth-form items 3)]
+            (cond
+              (and (lst-head? then-form "do") (empty-list? else-form))
+                (splice-fix l
+                            src
+                            "when-do"
+                            (nth-located items 1)
+                            (nth-located items 2)
+                            false)
+              (and (empty-list? then-form) (lst-head? else-form "do"))
+                (splice-fix l
+                            src
+                            "unless-do"
+                            (nth-located items 1)
+                            (nth-located items 3)
+                            true)
+              (Maybe.Nothing)))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
   (private rule-form-with-do)
   (hidden rule-form-with-do)
   (defn rule-form-with-do [l]
@@ -521,6 +677,30 @@ skipped. Returns the number of rules loaded, or a parse error.")
                 _ (Maybe.Nothing)))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
+
+  (private fix-form-with-do)
+  (hidden fix-form-with-do)
+  (defn fix-form-with-do [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (Int.= 3 (Array.length items))
+          (match-ref (nth-form items 0)
+            (Form.Sym segs)
+              (if (and (Int.= 1 (Array.length segs))
+                       (lst-head? (nth-form items 2) "do"))
+                (match (form-with-do-variant (Array.unsafe-nth segs 0))
+                  (Maybe.Just variant)
+                    (splice-fix l
+                                src
+                                &variant
+                                (nth-located items 1)
+                                (nth-located items 2)
+                                true)
+                  (Maybe.Nothing) (Maybe.Nothing))
+                (Maybe.Nothing))
+            _ (Maybe.Nothing))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
 
   (private rule-try-around-atomic)
   (hidden rule-try-around-atomic)
@@ -630,6 +810,23 @@ skipped. Returns the number of rules loaded, or a parse error.")
                 (Maybe.Nothing)))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
+
+  (private fix-if-one-branch-empty)
+  (hidden fix-if-one-branch-empty)
+  (defn fix-if-one-branch-empty [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.= 4 (Array.length items)) (sym? (nth-form items 0) "if"))
+          (let [then-form (nth-form items 2)
+                else-form (nth-form items 3)]
+            (cond
+              (and (empty-list? else-form) (not (lst-head? then-form "do")))
+                (drop-child-fix l src "when" 3)
+              (and (empty-list? then-form) (not (lst-head? else-form "do")))
+                (drop-child-fix l src "unless" 2)
+              (Maybe.Nothing)))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
 
   (private rule-when-do-with-not)
   (hidden rule-when-do-with-not)
@@ -759,6 +956,16 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private fix-cond-single-branch)
+  (hidden fix-cond-single-branch)
+  (defn fix-cond-single-branch [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.= 4 (Array.length items)) (sym? (nth-form items 0) "cond"))
+          (rehead-fix l src "if")
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
   (private rule-single-use-let)
   (hidden rule-single-use-let)
   (defn rule-single-use-let [l]
@@ -811,6 +1018,28 @@ skipped. Returns the number of rules loaded, or a parse error.")
                 _ (Maybe.Nothing)))
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
+
+  (private fix-redundant-do-in-do-variant)
+  (hidden fix-redundant-do-in-do-variant)
+  (defn fix-redundant-do-in-do-variant [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (Int.= 3 (Array.length items))
+          (match-ref (nth-form items 0)
+            (Form.Sym segs)
+              (if (and (Int.= 1 (Array.length segs))
+                       (and (do-variant? (Array.unsafe-nth segs 0))
+                            (lst-head? (nth-form items 2) "do")))
+                (splice-fix l
+                            src
+                            (Array.unsafe-nth segs 0)
+                            (nth-located items 1)
+                            (nth-located items 2)
+                            true)
+                (Maybe.Nothing))
+            _ (Maybe.Nothing))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
 
   (private push-maybe!)
   (hidden push-maybe!)
@@ -1000,19 +1229,23 @@ rule names satisfy `keep?`.")
                                   "(do ?x)"
                                   @"(do x) is just x"
                                   @"?x")
-      (register-pattern-rule! @"empty-do"
-                              @"(do) has no body"
-                              "(do)"
-                              @"(do) has no body")
+      (register-pattern-fix-rule! @"empty-do"
+                                  @"(do) has no body"
+                                  "(do)"
+                                  @"(do) has no body"
+                                  @"()")
       (register-rule! @"if-with-do"
                       @"(if cond (do …) ()) → (when-do …); (if cond () (do …)) → (unless-do …)"
                       rule-if-with-do)
+      (register-fix! @"if-with-do" fix-if-with-do)
       (register-rule! @"if-one-branch-empty"
                       @"(if cond x ()) → (when cond x); (if cond () x) → (unless cond x)"
                       rule-if-one-branch-empty)
+      (register-fix! @"if-one-branch-empty" fix-if-one-branch-empty)
       (register-rule! @"form-with-do"
                       @"(let|while|when|unless ... (do ...)) should use the matching -do variant"
                       rule-form-with-do)
+      (register-fix! @"form-with-do" fix-form-with-do)
       (register-pattern-fix-rule! @"when-with-not"
                                   @"(when (not c) x) → (unless c x)"
                                   "(when (not ?c) ?x)"
@@ -1064,6 +1297,8 @@ rule names satisfy `keep?`.")
       (register-rule! @"redundant-do-in-do-variant"
                       @"-do variant with (do ...) body; the inner do is redundant"
                       rule-redundant-do-in-do-variant)
+      (register-fix! @"redundant-do-in-do-variant"
+                     fix-redundant-do-in-do-variant)
       (register-pattern-rule! @"unsafe-result-unwrap"
                               @"Result.unsafe-from-success can crash; use match instead"
                               "(Result.unsafe-from-success ?x)"
@@ -1079,6 +1314,7 @@ rule names satisfy `keep?`.")
       (register-rule! @"cond-single-branch"
                       @"(cond c v default) is just (if c v default)"
                       rule-cond-single-branch)
+      (register-fix! @"cond-single-branch" fix-cond-single-branch)
       (register-rule! @"single-use-let"
                       @"(let [x expr] x) is just expr"
                       rule-single-use-let)
