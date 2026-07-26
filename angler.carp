@@ -151,12 +151,30 @@ a `Form.Sym` matching `name`.")
       (= name "unless") (Maybe.Just @"unless-do")
       (Maybe.Nothing)))
 
+  (private name-byte?)
+  (hidden name-byte?)
+  (defn name-byte? [c]
+    (or
+      (or (and (Char.>= c \a) (Char.<= c \z))
+          (and (Char.>= c \A) (Char.<= c \Z)))
+      (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
+
+  (private all-name-bytes?)
+  (hidden all-name-bytes?)
+  (defn all-name-bytes? [s]
+    (let-do [n (String.length s)
+             i 1]
+      (while (and (Int.< i n) (name-byte? (String.char-at s i)))
+        (set! i (Int.inc i)))
+      (Int.= i n)))
+
   (private metavar?)
   (hidden metavar?)
   (defn metavar? [segs]
     (and (Int.= 1 (Array.length segs))
          (let [s (Array.unsafe-nth segs 0)]
-           (and (Int.> (String.length s) 1) (Char.= \? (String.char-at s 0))))))
+           (and (Int.> (String.length s) 1)
+                (and (Char.= \? (String.char-at s 0)) (all-name-bytes? s))))))
 
   (private lookup-binding)
   (hidden lookup-binding)
@@ -228,9 +246,11 @@ a `Form.Sym` matching `name`.")
 
   (doc register-pattern-rule! "registers a lint rule that fires when
 `pattern-str` (a single Carp form) structurally matches a node.
-Symbols starting with `?` are metavariables: they match any form,
-and if the same `?name` appears more than once the bound forms
-must have equal string representations.
+Symbols starting with `?` followed by one or more name characters and
+nothing else are metavariables: they match any form, and if the same
+`?name` appears more than once the bound forms must have equal string
+representations. Any other symbol starting with `?` is an ordinary
+symbol and matches literally.
 
 ```
 (Lint.register-pattern-rule! @\"set-self\"
@@ -455,13 +475,12 @@ called `name`.")
             (Maybe.Nothing)))
       _ (Maybe.Nothing)))
 
-  (private name-byte?)
-  (hidden name-byte?)
-  (defn name-byte? [c]
-    (or
-      (or (and (Char.>= c \a) (Char.<= c \z))
-          (and (Char.>= c \A) (Char.<= c \Z)))
-      (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
+  (private metavar-start?)
+  (hidden metavar-start?)
+  (defn metavar-start? [tpl i n]
+    (and (Int.< (Int.inc i) n)
+         (and (Char.= \? (String.char-at tpl i))
+              (name-byte? (String.char-at tpl (Int.inc i))))))
 
   (private metavar-end)
   (hidden metavar-end)
@@ -475,7 +494,7 @@ called `name`.")
   (hidden literal-end)
   (defn literal-end [tpl start n]
     (let-do [j start]
-      (while (and (Int.< j n) (not (Char.= \? (String.char-at tpl j))))
+      (while (and (Int.< j n) (not (metavar-start? tpl j n)))
         (set! j (Int.inc j)))
       j))
 
@@ -486,11 +505,9 @@ called `name`.")
              n (String.length tpl)
              i 0
              ok true
-             lone? (and (Int.> n 1)
-                        (and (Char.= \? (String.char-at tpl 0))
-                             (Int.= n (metavar-end tpl 0 n))))]
+             lone? (and (metavar-start? tpl 0 n) (Int.= n (metavar-end tpl 0 n)))]
       (while-do (and ok (Int.< i n))
-        (let-do [meta? (Char.= \? (String.char-at tpl i))
+        (let-do [meta? (metavar-start? tpl i n)
                  j (if meta? (metavar-end tpl i n) (literal-end tpl i n))
                  chunk (String.byte-slice tpl i j)]
           (if meta?
@@ -523,7 +540,9 @@ called `name`.")
   (doc register-pattern-fix-rule! "is `register-pattern-rule!` plus a
 rewrite: `template-str` is source text in which every `?name` is
 replaced by the *original bytes* the metavariable matched, and the
-matched node is replaced by the result.
+matched node is replaced by the result. A `?` that is not followed by
+a name character is literal text, so `(unless (empty? ?x) ?y)` is a
+valid template.
 
 ```
 (Lint.register-pattern-fix-rule! @\"double-not\"
