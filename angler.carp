@@ -151,12 +151,22 @@ a `Form.Sym` matching `name`.")
       (= name "unless") (Maybe.Just @"unless-do")
       (Maybe.Nothing)))
 
+  (private name-byte?)
+  (hidden name-byte?)
+  (defn name-byte? [c]
+    (or
+      (or (and (Char.>= c \a) (Char.<= c \z))
+          (and (Char.>= c \A) (Char.<= c \Z)))
+      (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
+
   (private metavar?)
   (hidden metavar?)
   (defn metavar? [segs]
     (and (Int.= 1 (Array.length segs))
          (let [s (Array.unsafe-nth segs 0)]
-           (and (Int.> (String.length s) 1) (Char.= \? (String.char-at s 0))))))
+           (and (Int.> (String.length s) 1)
+                (and (Char.= \? (String.char-at s 0))
+                     (name-byte? (String.char-at s 1)))))))
 
   (private lookup-binding)
   (hidden lookup-binding)
@@ -228,9 +238,11 @@ a `Form.Sym` matching `name`.")
 
   (doc register-pattern-rule! "registers a lint rule that fires when
 `pattern-str` (a single Carp form) structurally matches a node.
-Symbols starting with `?` are metavariables: they match any form,
-and if the same `?name` appears more than once the bound forms
-must have equal string representations.
+Symbols starting with `?` followed by a name character are
+metavariables: they match any form, and if the same `?name` appears
+more than once the bound forms must have equal string
+representations. A `?` that is not followed by a name character is
+an ordinary symbol and matches literally.
 
 ```
 (Lint.register-pattern-rule! @\"set-self\"
@@ -454,14 +466,6 @@ called `name`.")
                          (Pair.init after l-end)]))
             (Maybe.Nothing)))
       _ (Maybe.Nothing)))
-
-  (private name-byte?)
-  (hidden name-byte?)
-  (defn name-byte? [c]
-    (or
-      (or (and (Char.>= c \a) (Char.<= c \z))
-          (and (Char.>= c \A) (Char.<= c \Z)))
-      (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
 
   (private metavar-start?)
   (hidden metavar-start?)

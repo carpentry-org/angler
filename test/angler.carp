@@ -808,6 +808,29 @@ x ; tail
 
   (assert-true t
     (match (Lint.load-rules-from-source!
+        "[(STARQ ?*) \"star-pattern\" \"holds a ? without a name character\" (G ?*)]
+[(NAMEQ ?x) \"name-pattern\" \"holds an ordinary metavariable\" (G ?x)]")
+      (Result.Success n) (Int.= 2 n)
+      _ false)
+    "loads rules whose patterns hold a ? outside a metavariable")
+  (assert-false t
+    (has-rule? "(STARQ 123)" "star-pattern")
+    "a ? without a name character after it does not bind in a pattern")
+  (assert-equal t
+    "(STARQ 123)"
+    &(fix! "(STARQ 123)")
+    "a pattern that cannot bind leaves the source alone")
+  (assert-equal t
+    "(G ?*)"
+    &(fix! "(STARQ ?*)")
+    "a ? without a name character matches literally on both sides")
+  (assert-equal t
+    "(G 123)"
+    &(fix! "(NAMEQ 123)")
+    "an ordinary metavariable still binds and expands")
+
+  (assert-true t
+    (match (Lint.load-rules-from-source!
         "[(?a ?b) \"swap-pair\" \"swap the operands\" (?b ?a)]")
       (Result.Success n) (Int.= 1 n)
       _ false)
