@@ -5,12 +5,13 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
-- A `?` only starts a metavariable when a name character follows it, in
-  rule patterns and rewrite templates alike. Templates that name a
-  predicate — say `(unless (empty? ?x) ?y)` — used to report their
-  finding and then silently leave the source untouched; `--fix` now
-  applies them. A pattern token such as `?*` is an ordinary symbol and
-  matches literally. Affects `--rules` files,
+- A metavariable is a `?` followed by one or more name characters and
+  nothing else, in rule patterns and rewrite templates alike. Templates
+  that name a predicate — say `(unless (empty? ?x) ?y)` — used to report
+  their finding and then silently leave the source untouched; `--fix`
+  now applies them. A pattern token such as `?*` or `?x?` is an ordinary
+  symbol and matches literally, rather than binding a name the template
+  resolves to a different value. Affects `--rules` files,
   `Lint.register-pattern-rule!` and `Lint.register-pattern-fix-rule!`.
 
 ## [0.4.0]

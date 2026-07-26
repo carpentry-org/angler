@@ -831,6 +831,28 @@ x ; tail
 
   (assert-true t
     (match (Lint.load-rules-from-source!
+        "[(INNERQ ?x ?x?) \"inner-q-pattern\" \"holds a ? after a name character\" (G ?x?)]
+[(INNERSTAR ?y ?y*) \"inner-star-pattern\" \"holds a * after a name character\" (G ?y*)]")
+      (Result.Success n) (Int.= 2 n)
+      _ false)
+    "loads rules whose patterns hold a ?name ending in a non-name character")
+  (assert-false t
+    (has-rule? "(INNERQ 11 22)" "inner-q-pattern")
+    "a ? after the name characters does not bind in a pattern")
+  (assert-false t
+    (has-rule? "(INNERSTAR 11 22)" "inner-star-pattern")
+    "a non-name character after the name characters does not bind in a pattern")
+  (assert-equal t
+    "(INNERQ 11 22)"
+    &(fix! "(INNERQ 11 22)")
+    "a pattern whose ?name ends in a ? leaves the source alone")
+  (assert-equal t
+    "(INNERSTAR 11 22)"
+    &(fix! "(INNERSTAR 11 22)")
+    "a pattern whose ?name ends in a * leaves the source alone")
+
+  (assert-true t
+    (match (Lint.load-rules-from-source!
         "[(?a ?b) \"swap-pair\" \"swap the operands\" (?b ?a)]")
       (Result.Success n) (Int.= 1 n)
       _ false)
