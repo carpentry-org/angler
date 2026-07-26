@@ -5,6 +5,12 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- `--fix` now rewrites `nested-if-chain`: `(if c1 x (if c2 y (if c3 z w)))`
+  becomes `(cond c1 x c2 y c3 z w)`, however deep the chain runs. Every
+  branch is moved as the bytes it already was, so multi-line branches
+  stay multi-line and keep their comments; run `carp-fmt` afterwards to
+  reindent. A chain whose inner `if` is malformed or carries a comment
+  among its children is still only reported.
 - A metavariable is a `?` followed by one or more name characters and
   nothing else, in rule patterns and rewrite templates alike. Templates
   that name a predicate — say `(unless (empty? ?x) ?y)` — used to report

@@ -894,6 +894,51 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private if-link?)
+  (hidden if-link?)
+  (defn if-link? [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (and (Int.= 4 (Array.length items))
+             (and (sym? (nth-form items 0) "if")
+                  (and (splicable? l src) (all-splicable? items src))))
+      _ false))
+
+  (private if-chain-parts)
+  (hidden if-chain-parts)
+  ; one part per link, from that link's condition to the next link's
+  ; opening paren; the last runs to just before its own closing paren.
+  (defn if-chain-parts [l src acc]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (let [from @(Info.pos (Located.info (nth-located items 1)))
+              tail (nth-located items 3)]
+          (if (if-link? tail src)
+            (if-chain-parts tail
+                            src
+                            (Array.push-back acc
+                                             (Pair.init from
+                                                        @(Info.pos (Located.info tail)))))
+            (Array.push-back acc
+                             (Pair.init from
+                                        (Int.dec @(Info.pos (Located.end l)))))))
+      _ acc))
+
+  (private fix-nested-if-chain)
+  (hidden fix-nested-if-chain)
+  (defn fix-nested-if-chain [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (if-link? l src) (if-link? (nth-located items 3) src))
+          (let [l-end @(Info.pos (Located.end l))
+                parts (if-chain-parts l src (the (Array (Pair Int Int)) []))]
+            (rebuild l
+                     src
+                     "cond "
+                     &(Array.push-back parts (Pair.init (Int.dec l-end) l-end))))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
   (private bol?)
   (hidden bol?)
   (defn bol? [f val] (match-ref f (Form.Bol b) (= b val) _ false))
@@ -1313,6 +1358,7 @@ rule names satisfy `keep?`.")
       (register-rule! @"nested-if-chain"
                       @"(if c1 x (if c2 ...)) can be a cond expression"
                       rule-nested-if-chain)
+      (register-fix! @"nested-if-chain" fix-nested-if-chain)
       (register-rule! @"redundant-do-in-do-variant"
                       @"-do variant with (do ...) body; the inner do is redundant"
                       rule-redundant-do-in-do-variant)
