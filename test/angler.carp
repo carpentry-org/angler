@@ -70,6 +70,9 @@
 
 (defn fixed-point? [src] (let [once (fix! src)] (= &once &(fix! &once))))
 
+(defn parses? [src]
+  (match (Lint.lint-source src) (Result.Success _) true (Result.Error _) false))
+
 (defn leftover [src rule] (count-rule &(fix! src) rule))
 
 (defn lint-output [src]
@@ -295,6 +298,13 @@
   (assert-false t
     (has-rule? "(if c (if c2 a b) y)" "nested-if-chain")
     "nested-if-chain does not fire when nested if is in then branch")
+  (assert-true t (has-rule? "(if c1 ; why
+  x
+  (if c2 y z))" "nested-if-chain") "nested-if-chain sees past a comment between the branches")
+  (assert-false t (has-rule? "(if c1 x (if c2 y z) ; trailing
+  )" "nested-if-chain") "nested-if-chain leaves a trailing comment alone")
+  (assert-false t (has-rule? "(if ; why
+  c1 x (if c2 y z))" "nested-if-chain") "nested-if-chain leaves a comment before the condition alone")
 
   (assert-true t
     (has-rule? "(while-do c (do x y))" "redundant-do-in-do-variant")
@@ -741,7 +751,28 @@ x ; tail
     "a chain whose inner if has the wrong arity is reported, not fixed")
   (assert-equal t "(if c1 x (if ; hey
   c2 y z))" &(fix! "(if c1 x (if ; hey
-  c2 y z))") "a comment among the inner if's children refuses the rewrite")
+  c2 y z))") "a comment before the inner if's condition refuses the rewrite")
+  (assert-equal t "(cond c1 x c2 ; hey
+  y z)" &(fix! "(if c1 x (if c2 ; hey
+  y z))") "a comment inside the inner if is carried into the cond")
+  (assert-equal t "(cond c1 ; hey
+  x c2 y z)" &(fix! "(if c1 ; hey
+  x (if c2 y z))") "a comment inside the outer if is carried into the cond")
+  (assert-equal t "(cond c1 x ; hey
+  c2 y z)" &(fix! "(if c1 x ; hey
+  (if c2 y z))") "a comment before the else-if is carried into the cond")
+  (assert-equal t "(cond c1 x c2 y c3 ; hey
+  z w)" &(fix! "(if c1 x (if c2 y (if c3 ; hey
+  z w)))") "a comment three links down is carried into the cond")
+  (assert-equal t "(if c1 x (if c2 y z) ; hey
+  )" &(fix! "(if c1 x (if c2 y z) ; hey
+  )") "a trailing comment leaves the chain alone")
+  (assert-true t (fixed-point? "(if c1 x (if c2 ; hey
+  y z))") "fixing a commented chain twice equals fixing it once")
+  (assert-true t (parses? &(fix! "(if c1 x (if c2 ; hey
+  y z))")) "a rewritten commented chain still parses")
+  (assert-equal t 0 (leftover "(if c1 x (if c2 ; hey
+  y z))" "nested-if-chain") "a commented chain leaves no finding behind")
   (assert-equal t
     "(cond c1 x c2 y z)"
     &(fix! "(cond c1 x c2 y z)")

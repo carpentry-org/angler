@@ -23,8 +23,10 @@ the project follows [Semantic Versioning](https://semver.org/).
   becomes `(cond c1 x c2 y c3 z w)`, however deep the chain runs. Every
   branch is moved as the bytes it already was, so multi-line branches
   stay multi-line and keep their comments; run `carp-fmt` afterwards to
-  reindent. A chain whose inner `if` is malformed or carries a comment
-  among its children is still only reported.
+  reindent. A comment between a link's condition and its else-branch is
+  carried into the `cond` unchanged. A chain is still only reported when
+  its inner `if` is malformed or holds a comment before its condition,
+  and is left alone entirely when a comment trails the else-branch.
 - A metavariable is a `?` followed by one or more name characters and
   nothing else, in rule patterns and rewrite templates alike. Templates
   that name a predicate — say `(unless (empty? ?x) ?y)` — used to report
