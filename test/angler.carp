@@ -658,6 +658,73 @@ x ; tail
   v
   default)") "cond-single-branch keeps the branches where they are")
 
+  (assert-equal t
+    "(cond c1 x c2 y z)"
+    &(fix! "(if c1 x (if c2 y z))")
+    "nested-if-chain fix collapses two levels into a cond")
+  (assert-equal t
+    "(cond c1 x c2 y c3 z w)"
+    &(fix! "(if c1 x (if c2 y (if c3 z w)))")
+    "nested-if-chain fix collapses three levels into a cond")
+  (assert-equal t
+    "(cond c1 x c2 y c3 z c4 a b)"
+    &(fix! "(if c1 x (if c2 y (if c3 z (if c4 a b))))")
+    "nested-if-chain fix collapses four levels into a cond")
+  (assert-equal t "(cond c1
+  x
+  c2
+    y
+    z)" &(fix! "(if c1
+  x
+  (if c2
+    y
+    z))") "nested-if-chain keeps every branch on the line it was on")
+  (assert-equal t
+    "(cond c1 x c2 y (do a b))"
+    &(fix! "(if c1 x (if c2 y (do a b)))")
+    "nested-if-chain moves a do else-branch across verbatim")
+  (assert-equal t
+    "(cond c1 x c2 y 42)"
+    &(fix! "(if c1 x (if c2 y 42))")
+    "nested-if-chain accepts a literal else-branch")
+  (assert-equal t
+    "(cond c1 x c2 y ())"
+    &(fix! "(if c1 x (if c2 y ()))")
+    "nested-if-chain accepts an empty-list else-branch")
+  (assert-equal t
+    "(cond c1 %@forms c2 y z)"
+    &(fix! "(if c1 %@forms (if c2 y z))")
+    "a spliced branch stays inside the enclosing list")
+  (assert-equal t
+    "(if c (if c2 a b) y)"
+    &(fix! "(if c (if c2 a b) y)")
+    "a nested if in the then-branch is not rewritten")
+  (assert-equal t
+    "(cond c1 x c2 (if cb ba bb) z)"
+    &(fix! "(if c1 x (if c2 (if cb ba bb) z))")
+    "a nested if in a chain's then-branch is carried along untouched")
+  (assert-true t
+    (has-rule? "(if c1 x (if c2 y))" "nested-if-chain")
+    "nested-if-chain still reports a chain whose inner if is malformed")
+  (assert-equal t
+    "(if c1 x (if c2 y))"
+    &(fix! "(if c1 x (if c2 y))")
+    "a chain whose inner if has the wrong arity is reported, not fixed")
+  (assert-equal t "(if c1 x (if ; hey
+  c2 y z))" &(fix! "(if c1 x (if ; hey
+  c2 y z))") "a comment among the inner if's children refuses the rewrite")
+  (assert-equal t
+    "(cond c1 x c2 y z)"
+    &(fix! "(cond c1 x c2 y z)")
+    "cond-single-branch does not misfire on a collapsed chain")
+  (assert-equal t
+    "(cond c1 x c2 y z)"
+    &(fix! "(cond c1 x (if c2 y z))")
+    "cond-single-branch and nested-if-chain converge instead of flip-flopping")
+  (assert-true t
+    (fixed-point? "(if c1 x (if c2 y (if c3 z w)))")
+    "fixing a nested-if chain twice equals fixing it once")
+
   (assert-equal t "()" &(fix! "(do)") "empty-do fix rewrites to unit")
 
   (assert-equal t
@@ -737,9 +804,7 @@ x ; tail
     (Lint.fixable? "cond-single-branch")
     "cond-single-branch is fixable")
   (assert-true t (Lint.fixable? "empty-do") "empty-do is fixable")
-  (assert-false t
-    (Lint.fixable? "nested-if-chain")
-    "nested-if-chain is deliberately not fixable")
+  (assert-true t (Lint.fixable? "nested-if-chain") "nested-if-chain is fixable")
   (assert-false t
     (Lint.fixable? "single-use-let")
     "single-use-let is deliberately not fixable")

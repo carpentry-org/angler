@@ -49,17 +49,18 @@ stderr.
 
 Rewrites that restructure a form splice the original bytes of the body
 back in, so a multi-line body stays multi-line and its comments stay
-where they were. The indentation of the spliced lines is not adjusted,
-though — run `carp-fmt` afterwards if you want the result reindented.
+where they were. `nested-if-chain` does it for a whole chain at once,
+however deep it runs. The indentation of the spliced lines is not
+adjusted, though — run `carp-fmt` afterwards if you want the result
+reindented.
 
 Some findings are only ever reported, because no rewrite for them is
 unconditionally semantics-preserving: renames
 (`non-kebab-case-defn`, `non-pascal-case-defmodule`) would need every
 call site updated, `identical-if-branches` cannot drop a condition that
-may have side effects, `nested-if-chain` reshapes several levels at
-once, and `unsafe-result-unwrap`, `unsafe-maybe-unwrap`,
-`single-use-let` and `try-around-atomic` need to know more about the
-program than the linter does.
+may have side effects, and `unsafe-result-unwrap`,
+`unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
+know more about the program than the linter does.
 
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.
