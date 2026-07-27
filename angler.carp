@@ -870,6 +870,45 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private negate-head-fix)
+  (hidden negate-head-fix)
+  ; rewrites `(HEAD (not c) …)` as `head`, `c`, then the rest verbatim.
+  (defn negate-head-fix [l src head]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (let [neg (nth-located items 1)]
+          (match-ref (Located.form neg)
+            (Form.Lst inner)
+              (let [c (nth-located inner 1)]
+                (if (and (splicable? c src) (not (splice-node? c)))
+                  (rebuild l
+                           src
+                           head
+                           &[(Pair.init (head-end l)
+                                        @(Info.pos (Located.info neg)))
+                             (Pair.init @(Info.pos (Located.info c))
+                                        @(Info.pos (Located.end c)))
+                             (Pair.init @(Info.pos (Located.end neg))
+                                        @(Info.pos (Located.end l)))])
+                  (Maybe.Nothing)))
+            _ (Maybe.Nothing)))
+      _ (Maybe.Nothing)))
+
+  (private fix-when-do-with-not)
+  (hidden fix-when-do-with-not)
+  (defn fix-when-do-with-not [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.>= (Array.length items) 3) (not-arg? (nth-form items 1)))
+          (cond
+            (sym? (nth-form items 0) "when-do")
+              (negate-head-fix l src "unless-do")
+            (sym? (nth-form items 0) "unless-do")
+              (negate-head-fix l src "when-do")
+            (Maybe.Nothing))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
   (private do-variant?)
   (hidden do-variant?)
   (defn do-variant? [name]
@@ -1214,20 +1253,34 @@ names satisfy `keep?`.")
             _ ())))
       acc))
 
+  (private index-fixes)
+  (hidden index-fixes)
+  (defn index-fixes [fixes]
+    (let-do [out (the (Array (Pair Int Fix)) [])]
+      (for [i 0 (Array.length fixes)]
+        (set! out
+              (Array.push-back out (Pair.init i @(Array.unsafe-nth fixes i)))))
+      out))
+
   (private start-ord)
   (hidden start-ord)
-  ; heap order, like core's own `ord`: `>` here sorts ascending.
-  (defn start-ord [a b] (Int.> @(Fix.start a) @(Fix.start b)))
+  ; heap order, like core's own `ord`: `>` here sorts ascending. the index
+  ; breaks `start` ties, so heapsort's instability cannot reach the output.
+  (defn start-ord [a b]
+    (let [sa @(Fix.start (Pair.b a))
+          sb @(Fix.start (Pair.b b))]
+      (if (Int.= sa sb) (Int.> @(Pair.a a) @(Pair.a b)) (Int.> sa sb))))
 
   (private apply-fixes)
   (hidden apply-fixes)
   (defn apply-fixes [src fixes]
-    (let-do [ordered (Array.sorted-by fixes &start-ord)
+    (let-do [indexed (index-fixes fixes)
+             ordered (Array.sorted-by &indexed &start-ord)
              out @""
              at 0
              n (Array.length &ordered)]
       (for [i 0 n]
-        (let-do [f (Array.unsafe-nth &ordered i)]
+        (let-do [f (Pair.b (Array.unsafe-nth &ordered i))]
           (when-do (Int.>= @(Fix.start f) at)
             (set! out
                   (String.concat
@@ -1323,6 +1376,7 @@ rule names satisfy `keep?`.")
       (register-rule! @"when-with-not"
                       @"(when-do (not c) ...) → (unless-do c ...); (unless-do (not c) ...) → (when-do c ...)"
                       rule-when-do-with-not)
+      (register-fix! @"when-with-not" fix-when-do-with-not)
       (register-pattern-fix-rule! @"not-equal"
                                   @"(not (= a b)) is just (/= a b)"
                                   "(not (= ?a ?b))"

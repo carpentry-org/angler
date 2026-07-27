@@ -70,6 +70,8 @@
 
 (defn fixed-point? [src] (let [once (fix! src)] (= &once &(fix! &once))))
 
+(defn leftover [src rule] (count-rule &(fix! src) rule))
+
 (defn lint-output [src]
   (let-do [diags (lint! src)
            out @""
@@ -492,6 +494,18 @@
     &(fix! "(unless (not c) x)")
     "when-with-not fix rewrites unless to when")
   (assert-equal t
+    "(unless-do c a b)"
+    &(fix! "(when-do (not c) a b)")
+    "when-with-not fix rewrites when-do to unless-do")
+  (assert-equal t
+    "(when-do c a b)"
+    &(fix! "(unless-do (not c) a b)")
+    "when-with-not fix rewrites unless-do to when-do")
+  (assert-equal t
+    "(unless-do (f x) a)"
+    &(fix! "(when-do (not (f x)) a)")
+    "the negated condition keeps its own bytes")
+  (assert-equal t
     "x"
     &(fix! "(let [] x)")
     "empty-let-bindings fix drops the let")
@@ -559,6 +573,21 @@ x ; tail
     "(= %@forms true)"
     &(fix! "(= %@forms true)")
     "unwrapping an unquote-splicing operand is refused")
+  (assert-true t
+    (has-rule? "(when-do (not %@forms) a b)" "when-with-not")
+    "when-with-not still reports an unquote-splicing condition")
+  (assert-equal t
+    "(when-do (not %@forms) a b)"
+    &(fix! "(when-do (not %@forms) a b)")
+    "hoisting an unquote-splicing condition out of the not is refused")
+  (assert-equal t "(unless-do c
+    a
+    b)" &(fix! "(when-do (not c)
+    a
+    b)") "a multi-line -do body stays where it was")
+  (assert-equal t "(when-do (not c) ; hi
+  a)" &(fix! "(when-do (not c) ; hi
+  a)") "a comment among the -do form's children refuses the rewrite")
 
   (assert-equal t
     "(let-do [x 1] a b)"
@@ -725,6 +754,21 @@ x ; tail
     (fixed-point? "(if c1 x (if c2 y (if c3 z w)))")
     "fixing a nested-if chain twice equals fixing it once")
 
+  (assert-equal t
+    "(unless c1 (if c2 y z))"
+    &(fix! "(if c1 () (if c2 y z))")
+    "two rules that start at one byte resolve to the earlier-registered one")
+  (assert-equal t
+    "(unless c1 (if c2 y z)) (unless d1 (if d2 p q)) (unless e1 (if e2 r s))"
+    &(fix!
+      "(if c1 () (if c2 y z)) (if d1 () (if d2 p q)) (if e1 () (if e2 r s))")
+    "identically shaped forms in one file all take the same rewrite")
+  (assert-equal t
+    "x (/= a b) (unless c1 (if c2 y z)) y z"
+    &(fix!
+      "(do (do x)) (not (= a b)) (if c1 () (if c2 y z)) (do y) (not (not z))")
+    "unrelated fixable forms elsewhere do not change a form's rewrite")
+
   (assert-equal t "()" &(fix! "(do)") "empty-do fix rewrites to unit")
 
   (assert-equal t
@@ -743,6 +787,25 @@ x ; tail
     "(unless-do c a b)"
     &(fix! "(when (not c) (do a b))")
     "when-with-not and form-with-do compose across passes")
+  (assert-equal t
+    0
+    (leftover
+      "(when (not (~f (unsafe-nth a i))) (do (set! res false) (break)))"
+      "when-with-not")
+    "the all? shape from carp's core is fixed away entirely")
+  (assert-equal t
+    0
+    (leftover
+      "(when-do (not (~f (unsafe-nth a i))) (set! res false) (break))"
+      "when-with-not")
+    "reaching that shape via form-with-do first is not a dead end")
+  (assert-true t
+    (fixed-point? "(when-do (not c) a b)")
+    "fixing a negated when-do twice equals fixing it once")
+  (assert-equal t
+    "(when-do c a b)"
+    &(fix! "(when-do (not (not c)) a b)")
+    "a doubly negated -do condition converges across passes")
 
   (assert-true t
     (fixed-point? "(let [x 1] (do (do a)))")

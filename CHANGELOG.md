@@ -5,6 +5,20 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- `--fix` now rewrites the `-do` half of `when-with-not`: `(when-do (not c)
+  …)` becomes `(unless-do c …)` and `(unless-do (not c) …)` becomes
+  `(when-do c …)`. Both were reported and never fixed, so `--fix` could
+  reach that shape through another rewrite and then stall there —
+  `carp`'s own `core/Array.carp` left a `when-with-not` finding behind
+  for exactly that reason. A condition that is an unquote-splicing form,
+  or a body carrying a comment among the form's own children, is still
+  only reported.
+- When two rules want to rewrite the same form, `--fix` now always picks
+  the same one: the rule registered first. The winner used to depend on
+  what else in the file happened to be fixable, so the same construct
+  could come out rewritten two different ways in one run.
+  `(if c1 () (if c2 y z))` now consistently becomes
+  `(unless c1 (if c2 y z))` rather than sometimes `(cond c1 () c2 y z)`.
 - `--fix` now rewrites `nested-if-chain`: `(if c1 x (if c2 y (if c3 z w)))`
   becomes `(cond c1 x c2 y c3 z w)`, however deep the chain runs. Every
   branch is moved as the bytes it already was, so multi-line branches
