@@ -298,6 +298,38 @@ called `name`.")
   (hidden comment?)
   (defn comment? [f] (match-ref f (Form.Cmt _) true _ false))
 
+  (private code-count)
+  (hidden code-count)
+  (defn code-count [items]
+    (let-do [n 0]
+      (for [i 0 (Array.length items)]
+        (unless (comment? (nth-form items i)) (set! n (Int.inc n))))
+      n))
+
+  (private code-index)
+  (hidden code-index)
+  ; index of the i-th non-comment child, or -1; callers check `code-count`
+  ; first, so it is always in range.
+  (defn code-index [items i]
+    (let-do [n (Array.length items)
+             j 0
+             seen 0
+             at -1]
+      (while-do (and (Int.< j n) (Int.< at 0))
+        (unless-do (comment? (nth-form items j))
+          (when (Int.= seen i) (set! at j))
+          (set! seen (Int.inc seen)))
+        (set! j (Int.inc j)))
+      at))
+
+  (private nth-code-form)
+  (hidden nth-code-form)
+  (defn nth-code-form [items i] (nth-form items (code-index items i)))
+
+  (private nth-code-located)
+  (hidden nth-code-located)
+  (defn nth-code-located [items i] (nth-located items (code-index items i)))
+
   (private splice-node?)
   (hidden splice-node?)
   (defn splice-node? [l]
@@ -354,6 +386,14 @@ called `name`.")
         (unless (splicable? (nth-located items i) src) (set! ok false)))
       ok))
 
+  (private all-code-splicable?)
+  (hidden all-code-splicable?)
+  (defn all-code-splicable? [items src]
+    (let-do [ok true]
+      (for [i 0 (code-count items)]
+        (unless (splicable? (nth-code-located items i) src) (set! ok false)))
+      ok))
+
   (private parts-in-order?)
   (hidden parts-in-order?)
   (defn parts-in-order? [parts lo hi]
@@ -389,16 +429,16 @@ called `name`.")
           0)
       _ 0))
 
-  (private rebuild)
-  (hidden rebuild)
+  (private rebuild-parts)
+  (hidden rebuild-parts)
   ; rebuilds `l` as its opening bytes, then `head` in place of its head
   ; token, then each `(Pair from to)` of `parts` copied out of `src`
-  ; verbatim.
-  (defn rebuild [l src head parts]
+  ; verbatim. Bytes outside `parts` are dropped, so a caller that keeps
+  ; comment children must cover them with a part.
+  (defn rebuild-parts [l src head parts]
     (match-ref (Located.form l)
       (Form.Lst items)
-        (if (and (Int.> (Array.length items) 0)
-                 (and (splicable? l src) (all-splicable? items src)))
+        (if (and (Int.> (Array.length items) 0) (splicable? l src))
           (let [from @(Info.pos (Located.info l))
                 hd @(Info.pos (Located.info (nth-located items 0)))
                 to @(Info.pos (Located.end l))]
@@ -410,6 +450,16 @@ called `name`.")
                            @head
                            (copy-parts src parts)]))
               (Maybe.Nothing)))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
+  (private rebuild)
+  (hidden rebuild)
+  (defn rebuild [l src head parts]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (all-splicable? items src)
+          (rebuild-parts l src head parts)
           (Maybe.Nothing))
       _ (Maybe.Nothing)))
 
@@ -915,6 +965,25 @@ skipped. Returns the number of rules loaded, or a parse error.")
     (or (= name "let-do")
         (or (= name "while-do") (or (= name "when-do") (= name "unless-do")))))
 
+  (private if-chain-comments?)
+  (hidden if-chain-comments?)
+  ; the rewrite copies each link from its condition to its else-branch, so
+  ; only comments in that span come along.
+  (defn if-chain-comments? [items]
+    (let-do [ok true
+             lo (code-index items 1)
+             hi (code-index items 3)]
+      (for [i 0 (Array.length items)]
+        (when (comment? (nth-form items i))
+          (unless (and (Int.< lo i) (Int.< i hi)) (set! ok false))))
+      ok))
+
+  (private if-link-shape?)
+  (hidden if-link-shape?)
+  (defn if-link-shape? [items]
+    (and (Int.= 4 (code-count items))
+         (and (sym? (nth-code-form items 0) "if") (if-chain-comments? items))))
+
   (private rule-nested-if-chain)
   (hidden rule-nested-if-chain)
   (defn rule-nested-if-chain [l]
@@ -922,8 +991,8 @@ skipped. Returns the number of rules loaded, or a parse error.")
           info (Located.info l)]
       (match-ref f
         (Form.Lst items)
-          (if (and (Int.= 4 (Array.length items)) (sym? (nth-form items 0) "if"))
-            (let [else-form (nth-form items 3)]
+          (if (if-link-shape? items)
+            (let [else-form (nth-code-form items 3)]
               (if (lst-head? else-form "if")
                 (dx info
                     "nested-if-chain"
@@ -938,9 +1007,8 @@ skipped. Returns the number of rules loaded, or a parse error.")
   (defn if-link? [l src]
     (match-ref (Located.form l)
       (Form.Lst items)
-        (and (Int.= 4 (Array.length items))
-             (and (sym? (nth-form items 0) "if")
-                  (and (splicable? l src) (all-splicable? items src))))
+        (and (if-link-shape? items)
+             (and (splicable? l src) (all-code-splicable? items src)))
       _ false))
 
   (private if-chain-parts)
@@ -950,8 +1018,8 @@ skipped. Returns the number of rules loaded, or a parse error.")
   (defn if-chain-parts [l src acc]
     (match-ref (Located.form l)
       (Form.Lst items)
-        (let [from @(Info.pos (Located.info (nth-located items 1)))
-              tail (nth-located items 3)]
+        (let [from @(Info.pos (Located.info (nth-code-located items 1)))
+              tail (nth-code-located items 3)]
           (if (if-link? tail src)
             (if-chain-parts tail
                             src
@@ -968,13 +1036,14 @@ skipped. Returns the number of rules loaded, or a parse error.")
   (defn fix-nested-if-chain [l src]
     (match-ref (Located.form l)
       (Form.Lst items)
-        (if (and (if-link? l src) (if-link? (nth-located items 3) src))
+        (if (and (if-link? l src) (if-link? (nth-code-located items 3) src))
           (let [l-end @(Info.pos (Located.end l))
                 parts (if-chain-parts l src (the (Array (Pair Int Int)) []))]
-            (rebuild l
-                     src
-                     "cond "
-                     &(Array.push-back parts (Pair.init (Int.dec l-end) l-end))))
+            (rebuild-parts l
+                           src
+                           "cond "
+                           &(Array.push-back parts
+                                             (Pair.init (Int.dec l-end) l-end))))
           (Maybe.Nothing))
       _ (Maybe.Nothing)))
 
