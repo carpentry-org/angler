@@ -450,6 +450,30 @@
   (assert-false t
     (has-rule? "(defmacro m [] (let [n 1] `(foo %n)))" "unused-let-binding")
     "an unquoted use inside a quasiquote counts")
+  (assert-false t
+    (has-rule? "(defmacro m [] (let [n 1] `(foo n)))" "unused-let-binding")
+    "a name inside a quasiquote counts as a use")
+  (assert-true t
+    (has-rule? "(defmacro m [] (let [n 1] `(foo z)))" "unused-let-binding")
+    "a quasiquote that does not mention the name does not save it")
+  (assert-false t
+    (has-rule? "(defmacro m [body] `(let [tmp 1] %body))" "unused-let-binding")
+    "an unquote in the body silences the let")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [:rest body] `(let-do [tmp 1] %@body))"
+      "unused-let-binding")
+    "an unquote-splicing in the body silences the let")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [body] `(let [tmp 1] (do (foo) %body)))"
+      "unused-let-binding")
+    "an unquote nested in the body silences the let")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [init] `(let [tmp %init x 1] tmp))"
+      "unused-let-binding")
+    "an unquote in an initialiser silences the let")
   (assert-equal t
     1
     (count-rule "(let [a 1 b 2] 3)" "unused-let-binding")

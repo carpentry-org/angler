@@ -72,7 +72,10 @@ one segment of a dotted symbol — `Foo.x` keeps `x` alive. Bindings
 whose name starts with `_` are never reported, and a binding vector
 with an odd number of entries is left alone. Neither is shadowing:
 in `(let [x 1 x 2] x)` the second `x` is an occurrence of the name, so
-the rule stays quiet.
+the rule stays quiet. A `let` whose binding vector or body contains an
+`unquote` or `unquote-splicing` form is left alone as well — an
+anaphoric macro splices its caller's body in at expansion time, so a
+use of the binding need not appear in the source at all.
 
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.

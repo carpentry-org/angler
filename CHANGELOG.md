@@ -12,9 +12,12 @@ the project follows [Semantic Versioning](https://semver.org/).
   and as does one segment of a dotted symbol — `Foo.x` keeps `x`
   alive. Bindings whose name starts with `_` are exempt, shadowing is
   not reported, and a binding vector with an odd number of entries is
-  left alone. The rule is only ever reported, never fixed: the
-  initialiser of a dead binding may be there for its side effect, which
-  is exactly the shape it tends to find.
+  left alone. So is a `let` whose bindings or body contain an `unquote`
+  or `unquote-splicing` form: an anaphoric macro's body is spliced in at
+  expansion time, so a use of the binding need not be in the source at
+  all. The rule is only ever reported, never fixed: the initialiser of a
+  dead binding may be there for its side effect, which is exactly the
+  shape it tends to find.
 - `--fix` now rewrites the `-do` half of `when-with-not`: `(when-do (not c)
   …)` becomes `(unless-do c …)` and `(unless-do (not c) …)` becomes
   `(when-do c …)`. Both were reported and never fixed, so `--fix` could

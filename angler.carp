@@ -1195,6 +1195,31 @@ skipped. Returns the number of rules loaded, or a parse error.")
         (set! i (Int.inc i)))
       found))
 
+  (private unquote-head?)
+  (hidden unquote-head?)
+  (defn unquote-head? [items]
+    (and (Int.> (Array.length items) 0)
+         (or (sym? (nth-form items 0) "unquote")
+             (sym? (nth-form items 0) "unquote-splicing"))))
+
+  (private unquotes-occur?)
+  (hidden unquotes-occur?)
+  ; a use spliced in at expansion time leaves no occurrence to find
+  (defn unquotes-occur? [items from]
+    (let-do [found false
+             i from
+             n (Array.length items)]
+      (while-do (and (not found) (Int.< i n))
+        (match-ref (Located.form (nth-located items i))
+          (Form.Lst kids)
+            (set! found (or (unquote-head? kids) (unquotes-occur? kids 0)))
+          (Form.Arr kids) (set! found (unquotes-occur? kids 0))
+          (Form.StaticArr kids) (set! found (unquotes-occur? kids 0))
+          (Form.Dict kids) (set! found (unquotes-occur? kids 0))
+          _ ())
+        (set! i (Int.inc i)))
+      found))
+
   (private binding-name)
   (hidden binding-name)
   ; an underscore name is a deliberate discard
@@ -1249,7 +1274,8 @@ skipped. Returns the number of rules loaded, or a parse error.")
           info (Located.info l)]
       (match-ref f
         (Form.Lst items)
-          (if (Int.>= (code-count items) 3)
+          (if (and (Int.>= (code-count items) 3)
+                   (not (unquotes-occur? items (code-from items 1))))
             (match (let-form-head (nth-code-form items 0))
               (Maybe.Just head)
                 (match-ref (nth-code-form items 1)
