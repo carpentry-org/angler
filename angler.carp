@@ -1164,6 +1164,137 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private let-form-head)
+  (hidden let-form-head)
+  (defn let-form-head [f]
+    (cond
+      (sym? f "let") (Maybe.Just @"let")
+      (sym? f "let-do") (Maybe.Just @"let-do")
+      (Maybe.Nothing)))
+
+  (private code-from)
+  (hidden code-from)
+  ; raw index of the i-th code child, or one past the end if there is none
+  (defn code-from [items i]
+    (if (Int.< i (code-count items)) (code-index items i) (Array.length items)))
+
+  (private syms-occur?)
+  (hidden syms-occur?)
+  (defn syms-occur? [items name from]
+    (let-do [found false
+             i from
+             n (Array.length items)]
+      (while-do (and (not found) (Int.< i n))
+        (match-ref (Located.form (nth-located items i))
+          (Form.Sym segs) (set! found (Array.contains? segs name))
+          (Form.Lst kids) (set! found (syms-occur? kids name 0))
+          (Form.Arr kids) (set! found (syms-occur? kids name 0))
+          (Form.StaticArr kids) (set! found (syms-occur? kids name 0))
+          (Form.Dict kids) (set! found (syms-occur? kids name 0))
+          _ ())
+        (set! i (Int.inc i)))
+      found))
+
+  (private unquote-head?)
+  (hidden unquote-head?)
+  (defn unquote-head? [items]
+    (and (Int.> (Array.length items) 0)
+         (or (sym? (nth-form items 0) "unquote")
+             (sym? (nth-form items 0) "unquote-splicing"))))
+
+  (private unquotes-occur?)
+  (hidden unquotes-occur?)
+  ; a use spliced in at expansion time leaves no occurrence to find
+  (defn unquotes-occur? [items from]
+    (let-do [found false
+             i from
+             n (Array.length items)]
+      (while-do (and (not found) (Int.< i n))
+        (match-ref (Located.form (nth-located items i))
+          (Form.Lst kids)
+            (set! found (or (unquote-head? kids) (unquotes-occur? kids 0)))
+          (Form.Arr kids) (set! found (unquotes-occur? kids 0))
+          (Form.StaticArr kids) (set! found (unquotes-occur? kids 0))
+          (Form.Dict kids) (set! found (unquotes-occur? kids 0))
+          _ ())
+        (set! i (Int.inc i)))
+      found))
+
+  (private binding-name)
+  (hidden binding-name)
+  ; an underscore name is a deliberate discard
+  (defn binding-name [f]
+    (match-ref f
+      (Form.Sym segs)
+        (if (Int.= 1 (Array.length segs))
+          (let [s (Array.unsafe-nth segs 0)]
+            (if (String.starts-with? s "_") (Maybe.Nothing) (Maybe.Just @s)))
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
+  (private unused-bindings)
+  (hidden unused-bindings)
+  (defn unused-bindings [items bindings]
+    (let-do [out (the (Array String) [])
+             pairs (Int./ (code-count bindings) 2)
+             body (code-from items 2)]
+      (for [k 0 pairs]
+        (let [ni (Int.* 2 k)]
+          (match (binding-name (nth-code-form bindings ni))
+            (Maybe.Just name)
+              (unless (or
+                  (syms-occur? bindings &name (code-from bindings (Int.+ ni 2)))
+                  (syms-occur? items &name body))
+                (set! out (Array.push-back out @&name)))
+            (Maybe.Nothing) ())))
+      out))
+
+  (private name-list)
+  (hidden name-list)
+  (defn name-list [names]
+    (let-do [out @""]
+      (for [i 0 (Array.length names)]
+        (do
+          (when (Int.> i 0) (set! out (String.append &out ", ")))
+          (set! out
+                (String.append &out &(fmt "'%s'" (Array.unsafe-nth names i))))))
+      out))
+
+  (private unused-message)
+  (hidden unused-message)
+  (defn unused-message [head names]
+    (if (Int.= 1 (Array.length names))
+      (fmt "%s binding %s is never used" head &(name-list names))
+      (fmt "%s bindings %s are never used" head &(name-list names))))
+
+  (private rule-unused-let-binding)
+  (hidden rule-unused-let-binding)
+  (defn rule-unused-let-binding [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.>= (code-count items) 3)
+                   (not (unquotes-occur? items (code-from items 1))))
+            (match (let-form-head (nth-code-form items 0))
+              (Maybe.Just head)
+                (match-ref (nth-code-form items 1)
+                  (Form.Arr bindings)
+                    (let [n (code-count bindings)]
+                      (if (Int.= n (Int.* 2 (Int./ n 2)))
+                        (let [unused (unused-bindings items bindings)]
+                          (if (Int.= 0 (Array.length &unused))
+                            (Maybe.Nothing)
+                            (dx info
+                                "unused-let-binding"
+                                &(unused-message &head &unused)
+                                (Form.str f))))
+                        (Maybe.Nothing)))
+                  _ (Maybe.Nothing))
+              (Maybe.Nothing) (Maybe.Nothing))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
   (private rule-redundant-do-in-do-variant)
   (hidden rule-redundant-do-in-do-variant)
   (defn rule-redundant-do-in-do-variant [l]
@@ -1506,4 +1637,7 @@ rule names satisfy `keep?`.")
       (register-rule! @"single-use-let"
                       @"(let [x expr] x) is just expr"
                       rule-single-use-let)
+      (register-rule! @"unused-let-binding"
+                      @"a let/let-do binding that is never referenced"
+                      rule-unused-let-binding)
       0)))
