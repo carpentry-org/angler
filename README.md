@@ -58,9 +58,21 @@ Some findings are only ever reported, because no rewrite for them is
 unconditionally semantics-preserving: renames
 (`non-kebab-case-defn`, `non-pascal-case-defmodule`) would need every
 call site updated, `identical-if-branches` cannot drop a condition that
-may have side effects, and `unsafe-result-unwrap`,
+may have side effects, `unused-let-binding` cannot delete a binding
+whose initialiser may have some, and `unsafe-result-unwrap`,
 `unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
 know more about the program than the linter does.
+
+`unused-let-binding` reports a `let` or `let-do` binding whose name
+occurs in none of the initialisers that follow it and nowhere in the
+body. The check is purely syntactic, which keeps it right in places a
+scope-accurate one would go wrong: `set!` counts as a use, so does a
+name that only appears inside a quasiquote or a macro body, and so does
+one segment of a dotted symbol — `Foo.x` keeps `x` alive. Bindings
+whose name starts with `_` are never reported, and a binding vector
+with an odd number of entries is left alone. Neither is shadowing:
+in `(let [x 1 x 2] x)` the second `x` is an occurrence of the name, so
+the rule stays quiet.
 
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.

@@ -5,6 +5,16 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- New rule `unused-let-binding`, on by default: a `let` or `let-do`
+  binding whose name occurs in none of the initialisers that follow it
+  and nowhere in the body is now reported. `set!` counts as a use, as
+  does a name that only appears inside a quasiquote or a macro body,
+  and as does one segment of a dotted symbol — `Foo.x` keeps `x`
+  alive. Bindings whose name starts with `_` are exempt, shadowing is
+  not reported, and a binding vector with an odd number of entries is
+  left alone. The rule is only ever reported, never fixed: the
+  initialiser of a dead binding may be there for its side effect, which
+  is exactly the shape it tends to find.
 - `--fix` now rewrites the `-do` half of `when-with-not`: `(when-do (not c)
   …)` becomes `(unless-do c …)` and `(unless-do (not c) …)` becomes
   `(when-do c …)`. Both were reported and never fixed, so `--fix` could

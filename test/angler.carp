@@ -401,10 +401,73 @@
     (has-rule? "(let [x 1] y)" "single-use-let")
     "single-use-let does not fire when body is a different variable")
 
+  (assert-true t
+    (has-rule? "(let [unused 1 used 2] used)" "unused-let-binding")
+    "unused-let-binding fires on a binding no later form mentions")
+  (assert-true t
+    (has-rule? "(let-do [dead 1] (foo) 0)" "unused-let-binding")
+    "unused-let-binding fires on let-do")
+  (assert-false t
+    (has-rule? "(let [x 1] (+ x 1))" "unused-let-binding")
+    "unused-let-binding does not fire when the body uses the binding")
+  (assert-false t
+    (has-rule? "(let [x 1 y x] y)" "unused-let-binding")
+    "a later initialiser counts as a use")
+  (assert-false t
+    (has-rule? "(let-do [x 1] (set! x 2) 0)" "unused-let-binding")
+    "set! counts as a use")
+  (assert-false t
+    (has-rule? "(let [x 1] (Foo.x))" "unused-let-binding")
+    "a dotted symbol segment counts as a use")
+  (assert-false t
+    (has-rule? "(let [x 1 x 2] x)" "unused-let-binding")
+    "a shadowed binding is not reported")
+  (assert-false t
+    (has-rule? "(let [_ (side-effect)] 0)" "unused-let-binding")
+    "an underscore binding is not reported")
+  (assert-false t
+    (has-rule? "(let [_tmp (side-effect)] 0)" "unused-let-binding")
+    "an underscore-prefixed binding is not reported")
+  (assert-false t
+    (has-rule? "(let [x 1 y] x)" "unused-let-binding")
+    "an odd binding vector is left alone")
+  (assert-false t
+    (has-rule? "(let [x 1])" "unused-let-binding")
+    "a let with no body is left alone")
+  (assert-false t
+    (has-rule? "(let x 1)" "unused-let-binding")
+    "a let without a binding vector is left alone")
+  (assert-true t (has-rule? "(let [x 1 ; note
+ y 2] y)" "unused-let-binding") "a comment in the binding vector does not shift the pairs")
+  (assert-false t (has-rule? "(let [x 1 ; note
+ y 2] (+ x y))" "unused-let-binding") "a comment in the binding vector does not hide a use")
+  (assert-true t
+    (has-rule? "(let [x 1] (let [y 2] x))" "unused-let-binding")
+    "a nested let is checked on its own")
+  (assert-false t
+    (has-rule? "(let [x 1] (let [y 2] (+ x y)))" "unused-let-binding")
+    "a use inside a nested let counts")
+  (assert-false t
+    (has-rule? "(defmacro m [] (let [n 1] `(foo %n)))" "unused-let-binding")
+    "an unquoted use inside a quasiquote counts")
   (assert-equal t
-    26
+    1
+    (count-rule "(let [a 1 b 2] 3)" "unused-let-binding")
+    "several unused bindings in one let are one finding")
+  (assert-true t
+    (String.contains-string? &(lint-output "(let [a 1 b 2] 3)")
+                             "let bindings 'a', 'b' are never used")
+    "the message names every unused binding")
+  (assert-true t
+    (String.contains-string?
+      &(lint-output "(let-do [dead 1] (foo) 0)")
+      "let-do binding 'dead' is never used")
+    "the message names the head form")
+
+  (assert-equal t
+    27
     (Array.length &(Lint.list-rules))
-    "24 built-ins + 2 top-level-registered test rules = 26")
+    "25 built-ins + 2 top-level-registered test rules = 27")
 
   (assert-equal t
     0
@@ -425,9 +488,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    26
+    27
     (Array.length &(Lint.list-rules))
-    "after top-level register, 26 rules total")
+    "after top-level register, 27 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -485,9 +548,9 @@
       (Result.Success _) false)
     "surfaces a parse error for a string with an invalid escape")
   (assert-equal t
-    28
+    29
     (Array.length &(Lint.list-rules))
-    "26 previous + 2 loaded from source = 28")
+    "27 previous + 2 loaded from source = 29")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -903,6 +966,9 @@ x ; tail
     (Lint.fixable? "single-use-let")
     "single-use-let is deliberately not fixable")
   (assert-false t
+    (Lint.fixable? "unused-let-binding")
+    "unused-let-binding is deliberately not fixable")
+  (assert-false t
     (Lint.fixable? "non-kebab-case-defn")
     "non-kebab-case-defn is not fixable")
   (assert-false t
@@ -923,9 +989,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    29
+    30
     (Array.length &(Lint.list-rules))
-    "28 previous + 1 loaded with a template = 29")
+    "29 previous + 1 loaded with a template = 30")
 
   (assert-true t
     (match (Lint.load-rules-from-source!
