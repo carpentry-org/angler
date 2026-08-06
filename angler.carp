@@ -1582,6 +1582,11 @@ rule names satisfy `keep?`.")
                                   "(not (= ?a ?b))"
                                   @"(not (= a b)) is just (/= a b)"
                                   @"(/= ?a ?b)")
+      (register-pattern-fix-rule! @"not-equal"
+                                  @"(not (/= a b)) is just (= a b)"
+                                  "(not (/= ?a ?b))"
+                                  @"(not (/= a b)) is just (= a b)"
+                                  @"(= ?a ?b)")
       (register-pattern-fix-rule! @"double-not"
                                   @"(not (not x)) is just x"
                                   "(not (not ?x))"
@@ -1591,6 +1596,10 @@ rule names satisfy `keep?`.")
                               @"(set! x x) is a no-op"
                               "(set! ?x ?x)"
                               @"(set! x x) is a no-op")
+      (register-pattern-rule! @"eq-self"
+                              @"(= x x) — both sides are identical"
+                              "(= ?x ?x)"
+                              @"(= x x) — both sides are identical")
       (register-rule! @"try-around-atomic"
                       @"Parser.try around Parser.string/Parser.byte is redundant"
                       rule-try-around-atomic)
@@ -1604,6 +1613,16 @@ rule names satisfy `keep?`.")
                               @"(if cond x x) — both branches are identical"
                               "(if ?c ?x ?x)"
                               @"(if cond x x) — both branches are identical; the condition is pointless")
+      (register-pattern-fix-rule! @"if-bool-branches"
+                                  @"(if c true false) is just c"
+                                  "(if ?c true false)"
+                                  @"(if c true false) is just c"
+                                  @"?c")
+      (register-pattern-fix-rule! @"if-bool-branches"
+                                  @"(if c false true) is just (not c)"
+                                  "(if ?c false true)"
+                                  @"(if c false true) is just (not c)"
+                                  @"(not ?c)")
       (register-pattern-fix-rule! @"empty-let-bindings"
                                   @"(let [] body) — empty bindings; just use body directly"
                                   "(let [] ?x)"

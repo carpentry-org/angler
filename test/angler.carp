@@ -244,6 +244,12 @@
   (assert-false t
     (has-rule? "(not foo)" "not-equal")
     "not-equal does not fire on plain (not foo)")
+  (assert-true t
+    (has-rule? "(not (/= a b))" "not-equal")
+    "not-equal fires on (not (/= a b))")
+  (assert-false t
+    (has-rule? "(not (/= a b c))" "not-equal")
+    "not-equal does not fire on a three-operand /=")
 
   (assert-true t
     (has-rule? "(not (not x))" "double-not")
@@ -258,6 +264,17 @@
   (assert-false t
     (has-rule? "(set! x y)" "set-self")
     "set-self does not fire on (set! x y)")
+
+  (assert-true t (has-rule? "(= x x)" "eq-self") "eq-self fires on (= x x)")
+  (assert-true t
+    (has-rule? "(= (f a) (f a))" "eq-self")
+    "eq-self fires on identical compound operands")
+  (assert-false t
+    (has-rule? "(= x y)" "eq-self")
+    "eq-self does not fire on (= x y)")
+  (assert-false t
+    (has-rule? "(= x x x)" "eq-self")
+    "eq-self does not fire on a three-operand =")
 
   (assert-true t
     (has-rule? "(defmodule my-thing)" "non-pascal-case-defmodule")
@@ -281,6 +298,25 @@
   (assert-false t
     (has-rule? "(if c (foo a) (foo b))" "identical-if-branches")
     "identical-if-branches does not fire on different compound branches")
+
+  (assert-true t
+    (has-rule? "(if c true false)" "if-bool-branches")
+    "if-bool-branches fires on (if c true false)")
+  (assert-true t
+    (has-rule? "(if c false true)" "if-bool-branches")
+    "if-bool-branches fires on (if c false true)")
+  (assert-false t
+    (has-rule? "(if c true x)" "if-bool-branches")
+    "if-bool-branches does not fire when only one branch is a boolean")
+  (assert-false t
+    (has-rule? "(if c x false)" "if-bool-branches")
+    "if-bool-branches does not fire when the true branch is not a boolean")
+  (assert-false t
+    (has-rule? "(if c true true)" "if-bool-branches")
+    "if-bool-branches does not fire when both branches are true")
+  (assert-false t
+    (has-rule? "(if c false false)" "if-bool-branches")
+    "if-bool-branches does not fire when both branches are false")
 
   (assert-true t
     (has-rule? "(let [] x)" "empty-let-bindings")
@@ -489,9 +525,9 @@
     "the message names the head form")
 
   (assert-equal t
-    27
+    31
     (Array.length &(Lint.list-rules))
-    "25 built-ins + 2 top-level-registered test rules = 27")
+    "29 built-ins + 2 top-level-registered test rules = 31")
 
   (assert-equal t
     0
@@ -512,9 +548,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    27
+    31
     (Array.length &(Lint.list-rules))
-    "after top-level register, 27 rules total")
+    "after top-level register, 31 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -572,15 +608,19 @@
       (Result.Success _) false)
     "surfaces a parse error for a string with an invalid escape")
   (assert-equal t
-    29
+    33
     (Array.length &(Lint.list-rules))
-    "27 previous + 2 loaded from source = 29")
+    "31 previous + 2 loaded from source = 33")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
     "(/= a b)"
     &(fix! "(not (= a b))")
     "not-equal fix rewrites to /=")
+  (assert-equal t
+    "(= a b)"
+    &(fix! "(not (/= a b))")
+    "not-equal fix rewrites /= back to =")
   (assert-equal t "x" &(fix! "(not (not  x))") "double-not fix unwraps twice")
   (assert-equal t
     "(unless c x)"
@@ -616,6 +656,22 @@
     "(not y)"
     &(fix! "(= false y)")
     "eq-false fix wraps the right operand in not")
+  (assert-equal t
+    "c"
+    &(fix! "(if c true false)")
+    "if-bool-branches fix keeps the condition")
+  (assert-equal t
+    "(not c)"
+    &(fix! "(if c false true)")
+    "if-bool-branches fix negates the condition")
+  (assert-equal t
+    "(foo a b)"
+    &(fix! "(if (foo a b) true false)")
+    "the kept condition keeps its own bytes")
+  (assert-equal t
+    "(= x x)"
+    &(fix! "(= x x)")
+    "eq-self is reported but never rewritten")
 
   (assert-equal t
     "x"
@@ -625,6 +681,10 @@
     "(/= a b)"
     &(fix! "(not (not (not (= a b))))")
     "double-not and not-equal compose across passes")
+  (assert-equal t
+    "y"
+    &(fix! "(if (not y) false true)")
+    "if-bool-branches and double-not compose across passes")
 
   (assert-equal t
     "(defn add [a b] (Int.+ a b))"
@@ -998,6 +1058,12 @@ x ; tail
   (assert-false t
     (Lint.fixable? "identical-if-branches")
     "identical-if-branches is deliberately not fixable")
+  (assert-false t
+    (Lint.fixable? "eq-self")
+    "eq-self is deliberately not fixable")
+  (assert-true t
+    (Lint.fixable? "if-bool-branches")
+    "if-bool-branches is fixable")
 
   (assert-true t
     (match (Lint.load-rules-from-source!
@@ -1013,9 +1079,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    30
+    34
     (Array.length &(Lint.list-rules))
-    "29 previous + 1 loaded with a template = 30")
+    "33 previous + 1 loaded with a template = 34")
 
   (assert-true t
     (match (Lint.load-rules-from-source!

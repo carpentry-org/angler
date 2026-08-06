@@ -5,6 +5,14 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Four more boolean simplifications are reported, all on by default.
+  `if-bool-branches` rewrites `(if c true false)` to `c` and
+  `(if c false true)` to `(not c)`; `not-equal` now covers the other
+  direction as well, rewriting `(not (/= a b))` to `(= a b)`. All three
+  are fixed by `--fix`: the condition or the operands are evaluated
+  exactly once before and after. `eq-self` reports `(= x x)` and is
+  only ever reported — the two sides can be calls, and folding
+  `(= (f) (f))` to `true` would drop them.
 - New rule `unused-let-binding`, on by default: a `let` or `let-do`
   binding whose name occurs in none of the initialisers that follow it
   and nowhere in the body is now reported. `set!` counts as a use, as

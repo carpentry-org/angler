@@ -58,10 +58,12 @@ Some findings are only ever reported, because no rewrite for them is
 unconditionally semantics-preserving: renames
 (`non-kebab-case-defn`, `non-pascal-case-defmodule`) would need every
 call site updated, `identical-if-branches` cannot drop a condition that
-may have side effects, `unused-let-binding` cannot delete a binding
-whose initialiser may have some, and `unsafe-result-unwrap`,
-`unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
-know more about the program than the linter does.
+may have side effects, `eq-self` cannot fold away two operands that may
+have them either — `(= (f) (f))` calls `f` twice — `unused-let-binding`
+cannot delete a binding whose initialiser may have some, and
+`unsafe-result-unwrap`, `unsafe-maybe-unwrap`, `single-use-let` and
+`try-around-atomic` need to know more about the program than the linter
+does.
 
 `unused-let-binding` reports a `let` or `let-do` binding whose name
 occurs in none of the initialisers that follow it and nowhere in the
