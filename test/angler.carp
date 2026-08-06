@@ -267,14 +267,32 @@
 
   (assert-true t (has-rule? "(= x x)" "eq-self") "eq-self fires on (= x x)")
   (assert-true t
+    (has-rule? "(= Foo.bar Foo.bar)" "eq-self")
+    "eq-self fires on a qualified symbol")
+  (assert-false t
     (has-rule? "(= (f a) (f a))" "eq-self")
-    "eq-self fires on identical compound operands")
+    "eq-self does not fire on identical calls")
+  (assert-false t
+    (has-rule? "(= &x &x)" "eq-self")
+    "eq-self does not fire on identical refs")
+  (assert-false t
+    (has-rule? "(= 1 1)" "eq-self")
+    "eq-self does not fire on identical literals")
+  (assert-false t
+    (has-rule? "(= \"a\" \"a\")" "eq-self")
+    "eq-self does not fire on identical strings")
+  (assert-false t
+    (has-rule? "(= [x] [x])" "eq-self")
+    "eq-self does not fire on identical arrays")
   (assert-false t
     (has-rule? "(= x y)" "eq-self")
     "eq-self does not fire on (= x y)")
   (assert-false t
     (has-rule? "(= x x x)" "eq-self")
     "eq-self does not fire on a three-operand =")
+  (assert-false t
+    (has-rule? "(/= x x)" "eq-self")
+    "eq-self does not fire on (/= x x)")
 
   (assert-true t
     (has-rule? "(defmodule my-thing)" "non-pascal-case-defmodule")

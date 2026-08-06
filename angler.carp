@@ -1112,6 +1112,29 @@ skipped. Returns the number of rules loaded, or a parse error.")
   (hidden fix-eq-false)
   (defn fix-eq-false [l src] (eq-bool-fix l src &false "(not " ")"))
 
+  (private same-sym?)
+  (hidden same-sym?)
+  (defn same-sym? [a b]
+    (match-ref a (Form.Sym segs) (sym? b &(String.join "." segs)) _ false))
+
+  (private rule-eq-self)
+  (hidden rule-eq-self)
+  ; a call or ref on either side may be a deliberate comparison of equals
+  (defn rule-eq-self [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.= 3 (Array.length items))
+                   (and (sym? (nth-form items 0) "=")
+                        (same-sym? (nth-form items 1) (nth-form items 2))))
+            (dx info
+                "eq-self"
+                "(= x x) — the variable is compared with itself"
+                (Form.str f))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
   (private rule-cond-single-branch)
   (hidden rule-cond-single-branch)
   (defn rule-cond-single-branch [l]
@@ -1596,10 +1619,9 @@ rule names satisfy `keep?`.")
                               @"(set! x x) is a no-op"
                               "(set! ?x ?x)"
                               @"(set! x x) is a no-op")
-      (register-pattern-rule! @"eq-self"
-                              @"(= x x) — both sides are identical"
-                              "(= ?x ?x)"
-                              @"(= x x) — both sides are identical")
+      (register-rule! @"eq-self"
+                      @"(= x x) — a variable compared with itself"
+                      rule-eq-self)
       (register-rule! @"try-around-atomic"
                       @"Parser.try around Parser.string/Parser.byte is redundant"
                       rule-try-around-atomic)
