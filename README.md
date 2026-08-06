@@ -87,6 +87,34 @@ use of the binding need not appear in the source at all.
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.
 
+### Quoting
+
+A form under a `quote` is data, not code, so no rule reports it and
+`--fix` never touches it. `'(do x)` is a three-element list a program
+may go on to inspect, not a `lonely-do`, and rewriting it to `'x` would
+change what the program means. The quote is a latch: everything below
+it is data however deep it goes, and an `unquote` under one does not
+bring code back — `'(do %x)` really is the list `(do (unquote x))`.
+
+A form under a `quasiquote` is a template that becomes code, so it is
+still reported — a `(let … (do …))` in a macro body produces the same
+awkward code a hand-written one would. It is never rewritten, though.
+A rewrite edits source text, and a splice makes the arity of the form
+it lands in unknowable until expansion: `` `(do %@forms) `` looks like
+a `lonely-do`, but `%@forms` may splice in nothing or ten forms, and
+`` `%@forms `` is the same expansion only in the one-form case. So
+findings inside a quasiquote are reported and left for you to judge.
+
+The argument of an `unquote` or `unquote-splicing` inside a quasiquote
+is ordinary code again, and is reported and fixed as such, one
+quasiquote level per unquote. A `quote` inside a quasiquote is not a
+latch — the quasiquote substitutes through it — so its contents stay a
+template rather than becoming data.
+
+A hand-written `(quote x)` is treated exactly like `'x`, and likewise
+for the other three; the reader expands the punctuation into those
+lists, and to the compiler they are the same form.
+
 ## Using it as a library
 
 `angler.carp` is also loadable from Carp code if you want to call the linter

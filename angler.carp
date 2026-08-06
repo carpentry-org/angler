@@ -1392,29 +1392,54 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (set! acc (push-maybe! acc (~(Rule.fn r) l))))))
       acc))
 
+  (private child-mode)
+  (hidden child-mode)
+  ; mode is 0 for code, -1 for data under a quote, n under n quasiquotes. the
+  ; reader expands 'x, `x, %x and %@x into the two-element lists matched here.
+  (defn child-mode [items mode]
+    (if (Int.= 2 (code-count items))
+      (let [h (nth-code-form items 0)]
+        (cond
+          (sym? h "quote") (if (Int.> mode 0) mode -1)
+          (sym? h "quasiquote") (Int.inc mode)
+          (and (Int.> mode 0)
+               (or (sym? h "unquote") (sym? h "unquote-splicing")))
+            (Int.dec mode)
+          mode))
+      mode))
+
   (private walk)
   (hidden walk)
-  (defn walk [forms keep?]
+  (defn walk [forms keep? mode]
     (let-do [acc (the (Array Diagnostic) [])
              n (Array.length forms)]
       (for [i 0 n]
         (let-do [l (Box.peek (Array.unsafe-nth forms i))]
           (set! acc (extend! acc (lint-form l keep?)))
           (match-ref (Located.form l)
-            (Form.Lst items) (set! acc (extend! acc (walk items keep?)))
-            (Form.Arr items) (set! acc (extend! acc (walk items keep?)))
-            (Form.StaticArr items) (set! acc (extend! acc (walk items keep?)))
-            (Form.Dict items) (set! acc (extend! acc (walk items keep?)))
+            (Form.Lst items)
+              (let [m (child-mode items mode)]
+                (unless (Int.< m 0)
+                  (set! acc (extend! acc (walk items keep? m)))))
+            (Form.Arr items) (set! acc (extend! acc (walk items keep? mode)))
+            (Form.StaticArr items)
+              (set! acc (extend! acc (walk items keep? mode)))
+            (Form.Dict items) (set! acc (extend! acc (walk items keep? mode)))
             _ ())))
       acc))
 
   (doc lint "applies every registered rule to every node in `forms`,
-recursing into compound forms. Returns one `Diagnostic` per finding.")
-  (defn lint [forms] (walk forms &(fn [_] true)))
+recursing into compound forms. Returns one `Diagnostic` per finding.
+
+A form under a `quote` is data, and is neither reported nor recursed
+into. A form under a `quasiquote` is a template for code, so it is
+still reported; the argument of an `unquote` or `unquote-splicing`
+inside one is ordinary code again.")
+  (defn lint [forms] (walk forms &(fn [_] true) 0))
 
   (doc lint-with "like `lint`, but only runs rules whose names satisfy
 `keep?`.")
-  (defn lint-with [keep? forms] (walk forms keep?))
+  (defn lint-with [keep? forms] (walk forms keep? 0))
 
   (doc lint-source "parses `src` via `Reader.parse` and lints with
 every registered rule. Returns `(Result (Array Diagnostic) ParseErr)`
@@ -1422,14 +1447,14 @@ so a parse failure surfaces distinctly from a clean parse with
 diagnostics.")
   (defn lint-source [src]
     (match (Reader.parse src)
-      (Result.Success forms) (Result.Success (walk &forms &(fn [_] true)))
+      (Result.Success forms) (Result.Success (walk &forms &(fn [_] true) 0))
       (Result.Error e) (Result.Error e)))
 
   (doc lint-source-with "like `lint-source`, but only runs rules whose
 names satisfy `keep?`.")
   (defn lint-source-with [keep? src]
     (match (Reader.parse src)
-      (Result.Success forms) (Result.Success (walk &forms keep?))
+      (Result.Success forms) (Result.Success (walk &forms keep? 0))
       (Result.Error e) (Result.Error e)))
 
   (private fix-for)
@@ -1458,21 +1483,23 @@ names satisfy `keep?`.")
 
   (private walk-fixes)
   (hidden walk-fixes)
-  (defn walk-fixes [forms keep? src]
+  (defn walk-fixes [forms keep? src mode]
     (let-do [acc (the (Array Fix) [])
              n (Array.length forms)]
       (for [i 0 n]
         (let-do [l (nth-located forms i)]
-          (set! acc (extend! acc (node-fixes l keep? src)))
+          (when (Int.= 0 mode) (set! acc (extend! acc (node-fixes l keep? src))))
           (match-ref (Located.form l)
             (Form.Lst items)
-              (set! acc (extend! acc (walk-fixes items keep? src)))
+              (let [m (child-mode items mode)]
+                (unless (Int.< m 0)
+                  (set! acc (extend! acc (walk-fixes items keep? src m)))))
             (Form.Arr items)
-              (set! acc (extend! acc (walk-fixes items keep? src)))
+              (set! acc (extend! acc (walk-fixes items keep? src mode)))
             (Form.StaticArr items)
-              (set! acc (extend! acc (walk-fixes items keep? src)))
+              (set! acc (extend! acc (walk-fixes items keep? src mode)))
             (Form.Dict items)
-              (set! acc (extend! acc (walk-fixes items keep? src)))
+              (set! acc (extend! acc (walk-fixes items keep? src mode)))
             _ ())))
       acc))
 
@@ -1518,7 +1545,7 @@ names satisfy `keep?`.")
   (defn fix-once [keep? src]
     (match (Reader.parse src)
       (Result.Success forms)
-        (let [fixes (walk-fixes &forms keep? src)]
+        (let [fixes (walk-fixes &forms keep? src 0)]
           (if (Int.= 0 (Array.length &fixes))
             (Maybe.Nothing)
             (Maybe.Just (apply-fixes src &fixes))))
@@ -1547,7 +1574,12 @@ overlap one already applied, are left alone; the rewrite is repeated
 until it reaches a fixpoint or a fixed pass limit. Only the bytes of
 fixed forms change, so formatting and comments elsewhere are
 preserved. A parse error is returned as such, and clean input comes
-back byte-identical.")
+back byte-identical.
+
+Nothing under a `quote` or a `quasiquote` is ever rewritten: the first
+is data, and a splice makes the arity of the second unknowable at lint
+time. The argument of an `unquote` or `unquote-splicing` inside a
+`quasiquote` is ordinary code, and is fixed as such.")
   (defn fix-source [src]
     (match (Reader.parse src)
       (Result.Success _) (Result.Success (fix-loop &(fn [_] true) @src))

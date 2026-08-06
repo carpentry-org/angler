@@ -1193,4 +1193,92 @@ x ; tail
   (assert-equal t
     "@x"
     &(fix! "@x")
-    "a metavariable bound to a synthesized node is not fixed"))
+    "a metavariable bound to a synthesized node is not fixed")
+
+  (assert-false t
+    (has-rule? "'(do x)" "lonely-do")
+    "a quoted form is data and is not reported")
+  (assert-false t
+    (has-rule? "(quote (do x))" "lonely-do")
+    "a hand-written quote is the same node as a reader quote")
+  (assert-false t
+    (has-rule? "'(defn FooBar [] 1)" "non-kebab-case-defn")
+    "a quoted defn is data and is not reported")
+  (assert-false t
+    (has-rule? "'(let [x 1] 2)" "unused-let-binding")
+    "a quoted let is data and is not reported")
+  (assert-false t
+    (has-rule? "'(a (b (do x)))" "lonely-do")
+    "a quote hides every depth below it")
+  (assert-false t
+    (has-rule? "'(do %x)" "lonely-do")
+    "an unquote under a plain quote does not restore code")
+  (assert-true t
+    (has-rule? "(do 'x)" "lonely-do")
+    "the form holding the quote is still code")
+  (assert-equal t
+    "(defn f [] '(if c true false))"
+    &(fix! "(defn f [] '(if c true false))")
+    "a quoted if is not rewritten")
+  (assert-equal t
+    "(defn f [] '(= x true))"
+    &(fix! "(defn f [] '(= x true))")
+    "a quoted comparison is not rewritten")
+  (assert-equal t
+    "(defn f [] '(when (not c) (do a b)))"
+    &(fix! "(defn f [] '(when (not c) (do a b)))")
+    "a quoted when is not rewritten")
+  (assert-equal t
+    "(defn f [] (quote (do x)))"
+    &(fix! "(defn f [] (quote (do x)))")
+    "a hand-written quote is not rewritten either")
+
+  (assert-true t
+    (has-rule? "`(do x)" "lonely-do")
+    "a quasiquoted form is a template and is still reported")
+  (assert-equal t
+    "`(do x)"
+    &(fix! "`(do x)")
+    "a quasiquoted form is not rewritten")
+  (assert-equal t
+    "`(do %@forms)"
+    &(fix! "`(do %@forms)")
+    "a spliced quasiquote body of unknown arity is not rewritten")
+  (assert-true t
+    (has-rule? "`(a '(do x))" "lonely-do")
+    "a quasiquote substitutes through a nested quote, so it stays a template")
+  (assert-equal t
+    "`(a '(do x))"
+    &(fix! "`(a '(do x))")
+    "a quote inside a quasiquote is not rewritten")
+  (assert-equal t
+    "`(a '(do %x))"
+    &(fix! "`(a '(do %x))")
+    "an unquote under a quote inside a quasiquote still expands, so it stands")
+
+  (assert-true t
+    (has-rule? "`(a %(do x))" "lonely-do")
+    "an unquoted argument is code again")
+  (assert-equal t
+    "`(a %x)"
+    &(fix! "`(a %(do x))")
+    "an unquoted argument is rewritten")
+  (assert-equal t
+    "`(a %@x)"
+    &(fix! "`(a %@(do x))")
+    "a splice's argument is rewritten")
+  (assert-equal t
+    "``(a %%x)"
+    &(fix! "``(a %%(do x))")
+    "an unquote returns one quasiquote level at a time")
+  (assert-equal t
+    "``(a %(do x))"
+    &(fix! "``(a %(do x))")
+    "one unquote inside two quasiquotes is still a template")
+
+  (assert-true t
+    (fixed-point? "(defn f [] '(if c true false))")
+    "quoted data is a fixpoint")
+  (assert-true t
+    (fixed-point? "`(a %(do (do x)))")
+    "an unquoted argument still converges"))
