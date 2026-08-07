@@ -87,6 +87,55 @@ use of the binding need not appear in the source at all.
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.
 
+### Suppressing
+
+`--only` and `--disable` are whole-run switches. To silence one finding
+in one place, write a comment next to it:
+
+```clojure
+; angler-disable-next-line form-with-do
+(let [a 1] (do a a))
+
+(do x) ; angler-disable-line lonely-do
+
+; angler-disable-file non-kebab-case-defn
+```
+
+`angler-disable-next-line` covers the line below the comment,
+`angler-disable-line` covers the comment's own line — so it is written
+as a trailing comment — and `angler-disable-file` covers the whole file
+from wherever in it the comment sits. Each takes rule names separated
+by spaces or commas; with no names it covers every rule.
+
+A directive is matched to a finding by line, and a finding is reported
+on the line the offending form *starts*. So a
+`; angler-disable-next-line lonely-do` written above a `(defn f [] …)`
+covers the `defn` line, not a `(do x)` three lines into its body. Put
+the directive directly above the form that is reported, which is
+usually inside another form:
+
+```clojure
+(defn f []
+  ; angler-disable-next-line lonely-do
+  (do x))
+```
+
+Suppression covers `--fix` too. A suppressed finding is not rewritten,
+and neither is a form whose rewrite would delete a directive along with
+it — silently rewriting the code you asked angler to leave alone is the
+one thing this feature must not do.
+
+Three rules watch the directives themselves.
+`unknown-suppression-rule` fires on a directive that names a rule which
+does not exist, `unknown-suppression-directive` on a comment that opens
+with `angler-disable` without being one of the three, and
+`unused-suppression` on a directive that suppressed nothing. They are
+ordinary rules, so `--disable unused-suppression` turns the last one off
+for a run and `; angler-disable-file unused-suppression` turns it off
+for a file. A directive whose rules are already off for the run is
+never reported unused, so `--only` and `--disable` do not turn every
+directive in the tree into noise.
+
 ### Quoting
 
 A form under a `quote` is data, not code, so no rule reports it and
@@ -114,6 +163,9 @@ template rather than becoming data.
 A hand-written `(quote x)` is treated exactly like `'x`, and likewise
 for the other three; the reader expands the punctuation into those
 lists, and to the compiler they are the same form.
+
+A suppression directive under a `quote` is read like any other, but
+nothing under a quote is reported, so it will be reported unused.
 
 ## Using it as a library
 

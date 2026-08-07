@@ -44,6 +44,22 @@
           (Maybe.Nothing))
       _ (Maybe.Nothing))))
 
+; drops any comment inside the form it rewrites, which is what the
+; directive-preserving check has to refuse.
+(defn rule-zap [l]
+  (if (Lint.lst-head? (Located.form l) "ZAP")
+    (Maybe.Just
+      (Diagnostic.init @"zap-rule"
+                       @"saw a ZAP"
+                       @""
+                       @(Info.line (Located.info l))
+                       @(Info.col (Located.info l))))
+    (Maybe.Nothing)))
+
+(defn fix-zap [l src]
+  (Maybe.Just
+    (Fix.init @(Info.pos (Located.info l)) @(Info.pos (Located.end l)) @"ZAPPED")))
+
 (defn count-with [keep? src rule]
   (let-do [diags (match (Lint.lint-source-with keep? src)
              (Result.Success d) d
@@ -63,6 +79,8 @@
                                  @"fires on (TPAT ?x ?x)"
                                  "(TPAT ?x ?x)"
                                  @"test pattern matched")
+    (Lint.register-rule! @"zap-rule" @"fires on a (ZAP …) form" rule-zap)
+    (Lint.register-fix! @"zap-rule" fix-zap)
     0))
 
 (defn fix! [src]
@@ -543,9 +561,9 @@
     "the message names the head form")
 
   (assert-equal t
-    31
+    35
     (Array.length &(Lint.list-rules))
-    "29 built-ins + 2 top-level-registered test rules = 31")
+    "32 built-ins + 3 top-level-registered test rules = 35")
 
   (assert-equal t
     0
@@ -566,9 +584,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    31
+    35
     (Array.length &(Lint.list-rules))
-    "after top-level register, 31 rules total")
+    "after top-level register, 35 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -588,6 +606,127 @@
   (assert-false t
     (has-rule? "(OTHER a a)" "test-pattern")
     "pattern rule does not fire when head symbol differs")
+
+  (assert-true t (no-diag? "; angler-disable-next-line
+(do x)") "a bare angler-disable-next-line suppresses every rule on the next line")
+  (assert-false t (has-rule? "; angler-disable-next-line lonely-do
+(do x)" "lonely-do") "a rule-scoped angler-disable-next-line suppresses that rule")
+  (assert-true t (has-rule? "; angler-disable-next-line empty-do
+(do x)" "lonely-do") "a directive naming another rule leaves the finding alone")
+  (assert-false t (has-rule? "; angler-disable-next-line lonely-do, empty-do
+(do x)" "lonely-do") "a rule list may be separated by commas as well as spaces")
+
+  (assert-true t
+    (no-diag? "(do x) ; angler-disable-line")
+    "a bare trailing angler-disable-line suppresses its own line")
+  (assert-false t
+    (has-rule? "(do x) ; angler-disable-line lonely-do" "lonely-do")
+    "a rule-scoped trailing angler-disable-line suppresses that rule")
+  (assert-true t (has-rule? "; angler-disable-line lonely-do
+(do x)" "lonely-do") "angler-disable-line on its own line covers no code")
+
+  (assert-true t (no-diag? "; angler-disable-file
+(do x)
+(do y)") "a bare angler-disable-file suppresses the whole file")
+  (assert-true t (Int.= 0 (count-rule "; angler-disable-file lonely-do
+(do x)
+(do)" "lonely-do")) "a rule-scoped angler-disable-file suppresses that rule everywhere")
+  (assert-true t (has-rule? "; angler-disable-file lonely-do
+(do x)
+(do)" "empty-do") "a rule-scoped angler-disable-file leaves other rules alone")
+
+  (assert-false t (has-rule? "(defn f []
+  ; angler-disable-next-line lonely-do
+  (do x))" "lonely-do") "a directive written inside a form works")
+  (assert-true t (has-rule? "(defn FooBar []
+  ; angler-disable-next-line lonely-do
+  (do x))" "non-kebab-case-defn") "a directive covers one line, not the form that encloses it")
+
+  (assert-true t (has-rule? "; angler-disable-next-line lonely-do
+(defn f []
+  (do x))" "lonely-do") "a directive covers the next line only, not the form it opens")
+  (assert-equal t 1 (count-rule "; angler-disable-next-line lonely-do
+(defn f []
+  (do x))" "unused-suppression") "a directive whose rule fires further down is reported unused")
+  (assert-equal t 1 (count-rule "; angler-disable-next-line lonely-do
+(do x y)" "unused-suppression") "a directive that matches no finding is reported unused")
+  (assert-equal t 0 (count-rule "; angler-disable-next-line lonely-do
+(do x)" "unused-suppression") "a directive that suppressed something is not reported unused")
+
+  (assert-equal t 1 (count-rule "; angler-disable-next-line lonley-do
+(do x)" "unknown-suppression-rule") "a directive naming a rule that does not exist is reported")
+  (assert-equal t 0 (count-rule "; angler-disable-next-line lonley-do
+(do x)" "unused-suppression") "a typo'd rule name is reported once, not twice")
+  (assert-equal t 1 (count-rule "; angler-disable-nextline lonely-do
+(do x)" "unknown-suppression-directive") "a comment that opens like a directive but is not one is reported")
+  (assert-equal t 0 (count-rule "; see angler-disable-next-line for a way out
+(do x)" "unknown-suppression-directive") "an ordinary comment mentioning a directive is still an ordinary comment")
+
+  (assert-equal t
+    0
+    (count-with &(fn [n] (= n "lonely-do"))
+                "; angler-disable-next-line lonely-do
+(do x)"
+                "lonely-do")
+    "a directive still suppresses under --only")
+  (assert-equal t
+    0
+    (count-with &(fn [n] (= n "empty-do")) "; angler-disable-next-line lonely-do
+(do x)" "unused-suppression")
+    "--only for another rule reports no unused directives")
+  (assert-equal t
+    0
+    (count-with &(fn [n] (/= n "lonely-do"))
+                "; angler-disable-next-line lonely-do
+(do x)"
+                "unused-suppression")
+    "a directive for a rule --disable already turned off is not unused")
+  (assert-equal t
+    1
+    (count-with &(fn [n] (/= n "empty-do"))
+                "; angler-disable-next-line lonely-do
+(do x y)"
+                "unused-suppression")
+    "--disable of another rule leaves unused reporting on")
+  (assert-true t (no-diag? "; angler-disable-file unused-suppression
+; angler-disable-next-line lonely-do
+(do x y)") "unused reporting can itself be switched off by a directive")
+
+  (assert-equal t "; angler-disable-next-line lonely-do
+(do x)
+" &(fix! "; angler-disable-next-line lonely-do
+(do x)
+") "--fix leaves a suppressed finding byte-identical")
+  (assert-equal t "; angler-disable-next-line lonely-do
+(do x)
+y
+" &(fix! "; angler-disable-next-line lonely-do
+(do x)
+(do y)
+") "--fix still rewrites the findings a directive does not cover")
+  (assert-equal t "; angler-disable-file
+(do x)
+(let [a 1] (do a a))
+" &(fix! "; angler-disable-file
+(do x)
+(let [a 1] (do a a))
+") "--fix rewrites nothing under angler-disable-file")
+  (assert-equal t "(ZAP
+  ; angler-disable-file lonely-do
+  q)
+(do w)
+" &(fix! "(ZAP
+  ; angler-disable-file lonely-do
+  q)
+(do w)
+") "a rewrite that would drop a directive is not applied")
+  (assert-equal t "ZAPPED
+w
+" &(fix! "(ZAP
+  ; an ordinary comment
+  q)
+(do w)
+") "the same rewrite goes through when the comment is not a directive")
 
   (assert-true t
     (match (Lint.load-rules-from-source!
@@ -626,9 +765,9 @@
       (Result.Success _) false)
     "surfaces a parse error for a string with an invalid escape")
   (assert-equal t
-    33
+    37
     (Array.length &(Lint.list-rules))
-    "31 previous + 2 loaded from source = 33")
+    "35 previous + 2 loaded from source = 37")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -1097,9 +1236,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    34
+    38
     (Array.length &(Lint.list-rules))
-    "33 previous + 1 loaded with a template = 34")
+    "37 previous + 1 loaded with a template = 38")
 
   (assert-true t
     (match (Lint.load-rules-from-source!

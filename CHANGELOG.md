@@ -5,6 +5,24 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Findings can be suppressed in place, from a comment in the linted
+  file, instead of only by turning a rule off for the whole run.
+  `; angler-disable-next-line` covers the line below the comment,
+  `; angler-disable-line` covers the comment's own line and is written
+  as a trailing comment, and `; angler-disable-file` covers the whole
+  file. Each takes a space- or comma-separated list of rule names, and
+  with no names covers every rule. Directives written inside a form
+  work, and a directive is matched to a finding by the line the
+  offending form starts on. `--fix` obeys them too: a suppressed
+  finding is not rewritten, and neither is a form whose rewrite would
+  delete a directive along with it. Three new rules watch the
+  directives themselves — `unknown-suppression-rule` for one that names
+  a rule that does not exist, `unknown-suppression-directive` for a
+  comment that opens with `angler-disable` without being a directive,
+  and `unused-suppression` for one that suppressed nothing. All three
+  answer to `--only` and `--disable` like any other rule, and a
+  directive whose rules are already off for the run is never reported
+  unused.
 - The linter now knows what quoting means. A form under a `quote` is
   data, so no rule reports it and `--fix` never rewrites it: `'(if c
   true false)` used to be rewritten to `'c`, `'(= x true)` to `'x` and
