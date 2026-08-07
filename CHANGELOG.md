@@ -5,6 +5,20 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- The linter now knows what quoting means. A form under a `quote` is
+  data, so no rule reports it and `--fix` never rewrites it: `'(if c
+  true false)` used to be rewritten to `'c`, `'(= x true)` to `'x` and
+  `'(when (not c) (do a b))` to `'(unless-do c a b)`, each of which
+  changes what the surrounding program means. Reports on quoted data
+  are gone too, so `'(do x)` no longer reports `lonely-do` and `'(defn
+  FooBar [] 1)` no longer reports `non-kebab-case-defn`. A form under a
+  `quasiquote` is a template for code rather than data, so it is still
+  reported, but it is no longer rewritten either: a spliced body makes
+  the arity of the form it lands in unknowable until expansion, and
+  `` `(do %@forms) `` is not `` `%@forms ``. The argument of an
+  `unquote` or `unquote-splicing` inside a quasiquote is ordinary code,
+  and is reported and fixed as such. A hand-written `(quote x)` behaves
+  exactly like `'x`, as it does for the compiler.
 - Four more boolean simplifications are reported, all on by default.
   `if-bool-branches` rewrites `(if c true false)` to `c` and
   `(if c false true)` to `(not c)`; `not-equal` now covers the other
