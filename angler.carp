@@ -40,6 +40,19 @@ am sure of”, and the finding is then reported but not fixed.")
 (deftype FixRule [name String
                   fn (Fn [(Ref Located) (Ref String)] (Maybe Fix))])
 
+(doc Suppression "is one inline `; angler-disable-…` directive. `rules`
+are the rule names it covers, empty meaning all of them; `target` is
+the line it applies to, `-1` for the whole file and `-2` for a comment
+that opens like a directive but names none; `line`, `col` and `pos` are
+the comment's own position, and `text` its bytes after the `;`.")
+(deftype Suppression
+  [rules (Array String)
+   target Int
+   line Int
+   col Int
+   pos Int
+   text String])
+
 (doc Lint "is the linter's core: the rule registry, the AST walker, and the
 public entry points (`lint`, `lint-with`, `lint-source`,
 `lint-source-with`). Plugin authors interact with it via
@@ -1381,6 +1394,227 @@ skipped. Returns the number of rules loaded, or a parse error.")
         (set! out (Array.push-back out @(Array.unsafe-nth &others i))))
       out))
 
+  (private target-file)
+  (hidden target-file)
+  (def target-file -1)
+
+  (private target-bad)
+  (hidden target-bad)
+  (def target-bad -2)
+
+  (private lead-len)
+  (hidden lead-len)
+  (defn lead-len [text]
+    (let-do [n (String.length text)
+             i 0
+             done false]
+      (while (and (not done) (Int.< i n))
+        (let [c (String.char-at text i)]
+          (if (or (Char.= c \;) (or (Char.= c \space) (Char.= c \tab)))
+            (set! i (Int.inc i))
+            (set! done true))))
+      i))
+
+  (private directive-tokens)
+  (hidden directive-tokens)
+  (defn directive-tokens [text]
+    (let-do [raw (String.split-by
+               &(String.byte-slice text (lead-len text) (String.length text))
+               &[\space \tab \,])
+             out (the (Array String) [])]
+      (for [i 0 (Array.length &raw)]
+        (let [t (Array.unsafe-nth &raw i)]
+          (unless (String.empty? t) (set! out (Array.push-back out @t)))))
+      out))
+
+  (private make-suppression)
+  (hidden make-suppression)
+  (defn make-suppression [rules target info text]
+    (Maybe.Just
+      (Suppression.init rules
+                        target
+                        @(Info.line info)
+                        @(Info.col info)
+                        @(Info.pos info)
+                        @text)))
+
+  (private parse-directive)
+  (hidden parse-directive)
+  (defn parse-directive [text info]
+    (let [toks (directive-tokens text)]
+      (if (Int.= 0 (Array.length &toks))
+        (Maybe.Nothing)
+        (let [head @(Array.unsafe-nth &toks 0)
+              rest (Array.suffix &toks 1)
+              line @(Info.line info)]
+          (cond
+            (= &head "angler-disable-file")
+              (make-suppression rest target-file info text)
+            (= &head "angler-disable-line")
+              (make-suppression rest line info text)
+            (= &head "angler-disable-next-line")
+              (make-suppression rest (Int.inc line) info text)
+            (or (= &head "angler-disable")
+                (String.starts-with? &head "angler-disable-"))
+              (make-suppression (the (Array String) []) target-bad info text)
+            (Maybe.Nothing))))))
+
+  (private collect-suppressions)
+  (hidden collect-suppressions)
+  (defn collect-suppressions [forms]
+    (let-do [acc (the (Array Suppression) [])]
+      (for [i 0 (Array.length forms)]
+        (let-do [l (nth-located forms i)]
+          (match-ref (Located.form l)
+            (Form.Cmt text)
+              (match (parse-directive text (Located.info l))
+                (Maybe.Just s) (set! acc (Array.push-back acc s))
+                (Maybe.Nothing) ())
+            (Form.Lst items)
+              (set! acc (extend! acc (collect-suppressions items)))
+            (Form.Arr items)
+              (set! acc (extend! acc (collect-suppressions items)))
+            (Form.StaticArr items)
+              (set! acc (extend! acc (collect-suppressions items)))
+            (Form.Dict items)
+              (set! acc (extend! acc (collect-suppressions items)))
+            _ ())))
+      acc))
+
+  (private known-rule?)
+  (hidden known-rule?)
+  (defn known-rule? [name]
+    (let-do [found false]
+      (for [i 0 (Array.length &*rules*)]
+        (when (= name (Rule.name (Array.unsafe-nth &*rules* i)))
+          (set! found true)))
+      found))
+
+  (private covers?)
+  (hidden covers?)
+  (defn covers? [s rule line]
+    (and
+      (or
+        (Int.= 0 (Array.length (Suppression.rules s)))
+        (Array.contains? (Suppression.rules s) rule))
+      (or
+        (Int.= target-file @(Suppression.target s))
+        (Int.= line @(Suppression.target s)))))
+
+  (private suppressed?)
+  (hidden suppressed?)
+  (defn suppressed? [sups rule line]
+    (let-do [hit false]
+      (for [i 0 (Array.length sups)]
+        (when (covers? (Array.unsafe-nth sups i) rule line) (set! hit true)))
+      hit))
+
+  (private keep-diags)
+  (hidden keep-diags)
+  (defn keep-diags [sups diags]
+    (let-do [out (the (Array Diagnostic) [])]
+      (for [i 0 (Array.length diags)]
+        (let [d (Array.unsafe-nth diags i)]
+          (unless (suppressed? sups (Diagnostic.rule d) @(Diagnostic.line d))
+            (set! out (Array.push-back out @d)))))
+      out))
+
+  ; a rewrite that swallows a directive un-suppresses it on the next pass.
+  (private fix-keeps-directives?)
+  (hidden fix-keeps-directives?)
+  (defn fix-keeps-directives? [f sups]
+    (let-do [ok true
+             start @(Fix.start f)
+             end @(Fix.end f)]
+      (for [i 0 (Array.length sups)]
+        (let [s (Array.unsafe-nth sups i)
+              p @(Suppression.pos s)]
+          (when (and (Int.>= p start) (Int.< p end))
+            (unless (String.contains-string? (Fix.replacement f)
+                                             &(String.append ";"
+                                                             (Suppression.text s)))
+              (set! ok false)))))
+      ok))
+
+  ; registered only so they list and answer to --only/--disable; the
+  ; suppression pass, not the walker, is what fires them.
+  (private quiet-rule)
+  (hidden quiet-rule)
+  (sig quiet-rule (Fn [(Ref Located)] (Maybe Diagnostic)))
+  (defn quiet-rule [_] (Maybe.Nothing))
+
+  (private sup-diag)
+  (hidden sup-diag)
+  (defn sup-diag [s rule msg]
+    (Diagnostic.init @rule
+                     msg
+                     (String.append ";" (Suppression.text s))
+                     @(Suppression.line s)
+                     @(Suppression.col s)))
+
+  (private sup-used?)
+  (hidden sup-used?)
+  (defn sup-used? [s diags]
+    (let-do [used false]
+      (for [i 0 (Array.length diags)]
+        (let [d (Array.unsafe-nth diags i)]
+          (when (covers? s (Diagnostic.rule d) @(Diagnostic.line d))
+            (set! used true))))
+      used))
+
+  (private unknown-rules)
+  (hidden unknown-rules)
+  (defn unknown-rules [s]
+    (let-do [out (the (Array String) [])
+             rules (Suppression.rules s)]
+      (for [i 0 (Array.length rules)]
+        (let [r (Array.unsafe-nth rules i)]
+          (unless (known-rule? r) (set! out (Array.push-back out @r)))))
+      out))
+
+  (private sup-active?)
+  (hidden sup-active?)
+  (defn sup-active? [s keep?]
+    (let-do [rules (Suppression.rules s)
+             any (Int.= 0 (Array.length rules))]
+      (for [i 0 (Array.length rules)]
+        (when (~keep? (Array.unsafe-nth rules i)) (set! any true)))
+      any))
+
+  (private suppression-diags)
+  (hidden suppression-diags)
+  (defn suppression-diags [sups diags keep?]
+    (let-do [out (the (Array Diagnostic) [])]
+      (for [i 0 (Array.length sups)]
+        (let [s (Array.unsafe-nth sups i)
+              bad (unknown-rules s)]
+          (cond
+            (Int.= target-bad @(Suppression.target s))
+              (when (~keep? "unknown-suppression-directive")
+                (set! out
+                      (Array.push-back out
+                                       (sup-diag s
+                                                 "unknown-suppression-directive"
+                                                 @"not a suppression directive; expected angler-disable-file, angler-disable-line or angler-disable-next-line"))))
+            (Int.> (Array.length &bad) 0)
+              (when (~keep? "unknown-suppression-rule")
+                (for [j 0 (Array.length &bad)]
+                  (set! out
+                        (Array.push-back out
+                                         (sup-diag s
+                                                   "unknown-suppression-rule"
+                                                   (fmt "no rule is called '%s'"
+                                                        (Array.unsafe-nth &bad j)))))))
+            (not (~keep? "unused-suppression")) ()
+            (not (sup-active? s keep?)) ()
+            (sup-used? s diags) ()
+            (set! out
+                  (Array.push-back out
+                                   (sup-diag s
+                                             "unused-suppression"
+                                             @"this directive suppressed nothing"))))))
+      out))
+
   (private lint-form)
   (hidden lint-form)
   (defn lint-form [l keep?]
@@ -1428,18 +1662,32 @@ skipped. Returns the number of rules loaded, or a parse error.")
             _ ())))
       acc))
 
+  (private lint-all)
+  (hidden lint-all)
+  (defn lint-all [forms keep?]
+    (let [sups (collect-suppressions forms)
+          diags (walk forms keep? 0)]
+      (extend! (keep-diags &sups &diags)
+               (keep-diags &sups &(suppression-diags &sups &diags keep?)))))
+
   (doc lint "applies every registered rule to every node in `forms`,
 recursing into compound forms. Returns one `Diagnostic` per finding.
 
 A form under a `quote` is data, and is neither reported nor recursed
 into. A form under a `quasiquote` is a template for code, so it is
 still reported; the argument of an `unquote` or `unquote-splicing`
-inside one is ordinary code again.")
-  (defn lint [forms] (walk forms &(fn [_] true) 0))
+inside one is ordinary code again.
+
+Findings covered by an inline `; angler-disable-…` directive are
+dropped, and directives that are unused, name a rule that does not
+exist, or open like a directive without being one are reported under
+`unused-suppression`, `unknown-suppression-rule` and
+`unknown-suppression-directive`.")
+  (defn lint [forms] (lint-all forms &(fn [_] true)))
 
   (doc lint-with "like `lint`, but only runs rules whose names satisfy
 `keep?`.")
-  (defn lint-with [keep? forms] (walk forms keep? 0))
+  (defn lint-with [keep? forms] (lint-all forms keep?))
 
   (doc lint-source "parses `src` via `Reader.parse` and lints with
 every registered rule. Returns `(Result (Array Diagnostic) ParseErr)`
@@ -1447,14 +1695,14 @@ so a parse failure surfaces distinctly from a clean parse with
 diagnostics.")
   (defn lint-source [src]
     (match (Reader.parse src)
-      (Result.Success forms) (Result.Success (walk &forms &(fn [_] true) 0))
+      (Result.Success forms) (Result.Success (lint-all &forms &(fn [_] true)))
       (Result.Error e) (Result.Error e)))
 
   (doc lint-source-with "like `lint-source`, but only runs rules whose
 names satisfy `keep?`.")
   (defn lint-source-with [keep? src]
     (match (Reader.parse src)
-      (Result.Success forms) (Result.Success (walk &forms keep? 0))
+      (Result.Success forms) (Result.Success (lint-all &forms keep?))
       (Result.Error e) (Result.Error e)))
 
   (private fix-for)
@@ -1470,36 +1718,43 @@ names satisfy `keep?`.")
 
   (private node-fixes)
   (hidden node-fixes)
-  (defn node-fixes [l keep? src]
+  (defn node-fixes [l keep? src sups]
     (let-do [acc (the (Array Fix) [])
+             line @(Info.line (Located.info l))
              n (Array.length &*rules*)]
       (for [i 0 n]
         (let [r (Array.unsafe-nth &*rules* i)]
-          (when (and (~keep? (Rule.name r)) (Maybe.just? &(~(Rule.fn r) l)))
+          (when (and
+              (and (~keep? (Rule.name r))
+                   (not (suppressed? sups (Rule.name r) line)))
+              (Maybe.just? &(~(Rule.fn r) l)))
             (match (fix-for (Rule.name r) l src)
-              (Maybe.Just f) (set! acc (Array.push-back acc f))
+              (Maybe.Just f)
+                (when (fix-keeps-directives? &f sups)
+                  (set! acc (Array.push-back acc f)))
               (Maybe.Nothing) ()))))
       acc))
 
   (private walk-fixes)
   (hidden walk-fixes)
-  (defn walk-fixes [forms keep? src mode]
+  (defn walk-fixes [forms keep? src mode sups]
     (let-do [acc (the (Array Fix) [])
              n (Array.length forms)]
       (for [i 0 n]
         (let-do [l (nth-located forms i)]
-          (when (Int.= 0 mode) (set! acc (extend! acc (node-fixes l keep? src))))
+          (when (Int.= 0 mode)
+            (set! acc (extend! acc (node-fixes l keep? src sups))))
           (match-ref (Located.form l)
             (Form.Lst items)
               (let [m (child-mode items mode)]
                 (unless (Int.< m 0)
-                  (set! acc (extend! acc (walk-fixes items keep? src m)))))
+                  (set! acc (extend! acc (walk-fixes items keep? src m sups)))))
             (Form.Arr items)
-              (set! acc (extend! acc (walk-fixes items keep? src mode)))
+              (set! acc (extend! acc (walk-fixes items keep? src mode sups)))
             (Form.StaticArr items)
-              (set! acc (extend! acc (walk-fixes items keep? src mode)))
+              (set! acc (extend! acc (walk-fixes items keep? src mode sups)))
             (Form.Dict items)
-              (set! acc (extend! acc (walk-fixes items keep? src mode)))
+              (set! acc (extend! acc (walk-fixes items keep? src mode sups)))
             _ ())))
       acc))
 
@@ -1545,7 +1800,11 @@ names satisfy `keep?`.")
   (defn fix-once [keep? src]
     (match (Reader.parse src)
       (Result.Success forms)
-        (let [fixes (walk-fixes &forms keep? src 0)]
+        (let [fixes (walk-fixes &forms
+                                keep?
+                                src
+                                0
+                                &(collect-suppressions &forms))]
           (if (Int.= 0 (Array.length &fixes))
             (Maybe.Nothing)
             (Maybe.Just (apply-fixes src &fixes))))
@@ -1713,4 +1972,13 @@ rule names satisfy `keep?`.")
       (register-rule! @"unused-let-binding"
                       @"a let/let-do binding that is never referenced"
                       rule-unused-let-binding)
+      (register-rule! @"unused-suppression"
+                      @"an angler-disable directive that suppressed nothing"
+                      quiet-rule)
+      (register-rule! @"unknown-suppression-rule"
+                      @"an angler-disable directive naming a rule that does not exist"
+                      quiet-rule)
+      (register-rule! @"unknown-suppression-directive"
+                      @"a comment that opens like an angler-disable directive but is not one"
+                      quiet-rule)
       0)))

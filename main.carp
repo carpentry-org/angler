@@ -80,7 +80,17 @@
     (IO.println "  --fix               rewrite fixable findings in place")
     (IO.println "  --dry-run           with --fix: print the result instead")
     (IO.println "  --list-rules        print registered rules and exit")
-    (IO.println "  -h, --help          show this help")))
+    (IO.println "  -h, --help          show this help")
+    (IO.println "")
+    (IO.println
+      "suppression directives, written as comments in the linted file:")
+    (IO.println
+      "  ; angler-disable-next-line [RULES]   the line below the comment")
+    (IO.println "  ; angler-disable-line [RULES]        the comment's own line")
+    (IO.println "  ; angler-disable-file [RULES]        the whole file")
+    (IO.println "")
+    (IO.println
+      "RULES is a space- or comma-separated list; none means every rule.")))
 
 (private print-rules!)
 (hidden print-rules!)
@@ -91,7 +101,7 @@
       (let [r (Array.unsafe-nth &rs i)
             tag (if (Lint.fixable? (Rule.name r)) @"[fix]" @"")]
         (IO.println
-          &(fmt "%-24s %-5s %s" (Rule.name r) &tag (Rule.description r)))))))
+          &(fmt "%-30s %-5s %s" (Rule.name r) &tag (Rule.description r)))))))
 
 (private keep?)
 (hidden keep?)

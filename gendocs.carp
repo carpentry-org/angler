@@ -51,7 +51,15 @@ consumers. See
 - `--only RULES`, comma-separated allow-list.
 - `--disable RULES`, comma-separated deny-list.
 - `--list-rules`, prints the registry and exits.
-- `-h`, `--help`, prints usage.")
+- `-h`, `--help`, prints usage.
+
+### Suppressing findings
+
+A `; angler-disable-next-line`, `; angler-disable-line` or
+`; angler-disable-file` comment in the linted file switches rules off
+for the line below it, its own line, or the whole file. Each takes a
+space- or comma-separated list of rule names; none means every rule.
+Suppression applies to `--fix` as well as to reporting.")
 
 (save-docs Lint Diagnostic Rule)
 (defn main [] (System.system "mv ./docs/angler_index.html ./docs/index.html"))
