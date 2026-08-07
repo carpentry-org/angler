@@ -18,8 +18,9 @@ the project follows [Semantic Versioning](https://semver.org/).
   delete a directive along with it. Three new rules watch the
   directives themselves — `unknown-suppression-rule` for one that names
   a rule that does not exist, `unknown-suppression-directive` for a
-  comment that opens with `angler-disable` without being a directive,
-  and `unused-suppression` for one that suppressed nothing. All three
+  comment whose first word is `angler-disable` or opens with
+  `angler-disable-` without being one of them, and
+  `unused-suppression` for one that suppressed nothing. All three
   answer to `--only` and `--disable` like any other rule, and a
   directive whose rules are already off for the run is never reported
   unused.

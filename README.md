@@ -127,14 +127,15 @@ one thing this feature must not do.
 
 Three rules watch the directives themselves.
 `unknown-suppression-rule` fires on a directive that names a rule which
-does not exist, `unknown-suppression-directive` on a comment that opens
-with `angler-disable` without being one of the three, and
-`unused-suppression` on a directive that suppressed nothing. They are
-ordinary rules, so `--disable unused-suppression` turns the last one off
-for a run and `; angler-disable-file unused-suppression` turns it off
-for a file. A directive whose rules are already off for the run is
-never reported unused, so `--only` and `--disable` do not turn every
-directive in the tree into noise.
+does not exist, `unknown-suppression-directive` on a comment whose
+first word is `angler-disable` or opens with `angler-disable-` without
+being one of the three, and `unused-suppression` on a directive that
+suppressed nothing. They are ordinary rules, so `--disable
+unused-suppression` turns the last one off for a run and
+`; angler-disable-file unused-suppression` turns it off for a file. A
+directive whose rules are already off for the run is never reported
+unused, so `--only` and `--disable` do not turn every directive in the
+tree into noise.
 
 ### Quoting
 

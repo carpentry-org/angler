@@ -661,6 +661,16 @@
 (do x)" "unknown-suppression-directive") "a comment that opens like a directive but is not one is reported")
   (assert-equal t 0 (count-rule "; see angler-disable-next-line for a way out
 (do x)" "unknown-suppression-directive") "an ordinary comment mentioning a directive is still an ordinary comment")
+  (assert-equal t 1 (count-rule "; angler-disable-lines lonely-do
+(do x)" "unknown-suppression-directive") "a directive name with a typo after the last hyphen is reported")
+  (assert-equal t 1 (count-rule "; angler-disable
+(do x)" "unknown-suppression-directive") "a bare angler-disable names no directive and is reported")
+  (assert-equal t 0 (count-rule "; angler-disabled temporarily
+(do x)" "unknown-suppression-directive") "prose whose first word merely begins with angler-disable is an ordinary comment")
+  (assert-equal t 0 (count-rule "; angler-disables nothing here
+(do x)" "unknown-suppression-directive") "prose is an ordinary comment however the word ends")
+  (assert-true t (has-rule? "; angler-disabled temporarily
+(do x)" "lonely-do") "prose suppresses nothing")
 
   (assert-equal t
     0
