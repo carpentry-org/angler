@@ -60,10 +60,10 @@ unconditionally semantics-preserving: renames
 call site updated, `identical-if-branches` cannot drop a condition that
 may have side effects, `eq-self` cannot fold `(= x x)` to `true` — for a
 NaN float it is `false`, which is exactly what that idiom tests for —
-`unused-let-binding` cannot delete a binding whose initialiser may have
-some, and `unsafe-result-unwrap`, `unsafe-maybe-unwrap`,
-`single-use-let` and `try-around-atomic` need to know more about the
-program than the linter does.
+`unused-let-binding` and `shadowed-let-binding` cannot delete a binding
+whose initialiser may have some, and `unsafe-result-unwrap`,
+`unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
+know more about the program than the linter does.
 
 `eq-self` fires only when both operands are the same bare symbol, so
 `(= (f) (f))` and `(= &x &x)` stay quiet: a test suite comparing two
@@ -83,6 +83,19 @@ the rule stays quiet. A `let` whose binding vector or body contains an
 `unquote` or `unquote-splicing` form is left alone as well — an
 anaphoric macro splices its caller's body in at expansion time, so a
 use of the binding need not appear in the source at all.
+
+`shadowed-let-binding` covers the hole that leaves behind: a name bound
+twice in the same vector, where the first binding is dead. It reports
+`(let [x 1 x 2] x)`, in which the `1` is computed and thrown away, but
+not `(let [x 1 x (+ x 1)] x)` — there the second initialiser consumes
+the first binding, which is a deliberate pipeline rather than a
+mistake. Any occurrence of the name between the two bindings keeps the
+earlier one alive, including one in the shadowing initialiser itself.
+The conventions are the ones `unused-let-binding` uses: a name starting
+with `_` is exempt, one segment of a dotted symbol counts as a use, an
+odd binding vector is left alone, and an `unquote` or
+`unquote-splicing` anywhere in the form silences it. Three or more
+bindings of one name are one finding.
 
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.

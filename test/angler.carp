@@ -560,10 +560,70 @@
       "let-do binding 'dead' is never used")
     "the message names the head form")
 
+  (assert-true t
+    (has-rule? "(let [x 1 x 2] x)" "shadowed-let-binding")
+    "shadowed-let-binding fires when the shadowed binding is never used")
+  (assert-true t
+    (has-rule? "(let-do [x (foo) x 2] (bar x))" "shadowed-let-binding")
+    "shadowed-let-binding fires on let-do")
+  (assert-false t
+    (has-rule? "(let [x 1 x (+ x 1)] x)" "shadowed-let-binding")
+    "sequential rebinding is not reported")
+  (assert-false t
+    (has-rule? "(let [x 1 y x x 2] x)" "shadowed-let-binding")
+    "a use in an intervening initialiser counts")
+  (assert-false t
+    (has-rule? "(let [x 1 y (Foo.x) x 2] x)" "shadowed-let-binding")
+    "a dotted symbol segment counts as a use")
+  (assert-false t
+    (has-rule? "(let [_ 1 _ 2] 0)" "shadowed-let-binding")
+    "an underscore binding is not reported")
+  (assert-false t
+    (has-rule? "(let [x 1 y 2] (+ x y))" "shadowed-let-binding")
+    "distinct names are not reported")
+  (assert-false t
+    (has-rule? "(let [x 1 x 2 y] x)" "shadowed-let-binding")
+    "an odd binding vector is left alone")
+  (assert-false t
+    (has-rule? "(let [x 1 x 2])" "shadowed-let-binding")
+    "a let with no body is left alone")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [init] `(let [x 1 x %init] x))"
+      "shadowed-let-binding")
+    "an unquote in an initialiser silences the let")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [body] `(let [x 1 x 2] %body))"
+      "shadowed-let-binding")
+    "an unquote in the body silences the let")
+  (assert-true t (has-rule? "(let [x 1 ; note
+ x 2] x)" "shadowed-let-binding") "a comment in the binding vector does not shift the pairs")
   (assert-equal t
-    35
+    1
+    (count-rule "(let [x 1 x 2 x 3] x)" "shadowed-let-binding")
+    "three bindings of one name are one finding")
+  (assert-false t
+    (has-rule? "(let [x 1 x (+ x 1) x (+ x 1)] x)" "shadowed-let-binding")
+    "a chain of sequential rebindings is not reported")
+  (assert-true t
+    (String.contains-string?
+      &(lint-output "(let [a 1 a 2 b 3 b 4] (+ a b))")
+      "let bindings 'a', 'b' are shadowed by later bindings")
+    "the message names every shadowed binding")
+  (assert-true t
+    (String.contains-string?
+      &(lint-output "(let-do [dead 1 dead 2] dead)")
+      "let-do binding 'dead' is shadowed by a later binding")
+    "the message names the head form")
+  (assert-false t
+    (Lint.fixable? "shadowed-let-binding")
+    "shadowed-let-binding is deliberately not fixable")
+
+  (assert-equal t
+    36
     (Array.length &(Lint.list-rules))
-    "32 built-ins + 3 top-level-registered test rules = 35")
+    "33 built-ins + 3 top-level-registered test rules = 36")
 
   (assert-equal t
     0
@@ -584,9 +644,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    35
+    36
     (Array.length &(Lint.list-rules))
-    "after top-level register, 35 rules total")
+    "after top-level register, 36 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -775,9 +835,9 @@ w
       (Result.Success _) false)
     "surfaces a parse error for a string with an invalid escape")
   (assert-equal t
-    37
+    38
     (Array.length &(Lint.list-rules))
-    "35 previous + 2 loaded from source = 37")
+    "36 previous + 2 loaded from source = 38")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -1246,9 +1306,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    38
+    39
     (Array.length &(Lint.list-rules))
-    "37 previous + 1 loaded with a template = 38")
+    "38 previous + 1 loaded with a template = 39")
 
   (assert-true t
     (match (Lint.load-rules-from-source!
