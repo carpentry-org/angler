@@ -672,6 +672,22 @@
   (assert-true t (has-rule? "; angler-disabled temporarily
 (do x)" "lonely-do") "prose suppresses nothing")
 
+  (assert-true t (has-rule? "; ’’’’’
+(do x)" "lonely-do") "a comment as long in bytes as a directive is still prose")
+  (assert-true t (has-rule? "; ’’’’’’’’
+(do x)" "lonely-do") "a comment of multi-byte characters is still prose")
+  (assert-equal t 0 (count-rule "; ’’’’’’’’
+(do x)" "unknown-suppression-directive") "a multi-byte comment does not open like a directive")
+  (assert-true t
+    (String.contains-string? &(lint-output "; ’’’’’’’’
+(do x)") "2:1:")
+    "a multi-byte comment does not move a later finding")
+  (assert-false t (has-rule? "; angler-disable-next-line lonely-do
+(do \"’’’’’’’’\")" "lonely-do") "a directive covers a line holding multi-byte text")
+  (assert-true t
+    (has-rule? "(let [naïve 1] (do naïve))" "lonely-do")
+    "a rule fires around a multi-byte binding name")
+
   (assert-equal t
     0
     (count-with &(fn [n] (= n "lonely-do"))
