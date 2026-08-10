@@ -84,6 +84,24 @@ the rule stays quiet. A `let` whose binding vector or body contains an
 anaphoric macro splices its caller's body in at expansion time, so a
 use of the binding need not appear in the source at all.
 
+`discarded-let-body` reports a plain `let` whose body has more than one
+form. Carp's `let` evaluates the first one and returns it; every later
+form is dropped without being compiled, type-checked or run, and
+neither the compiler nor the reader says a word about it. `while` has
+the same rule and rejects the extra forms with an error, and `if` and
+`the` reject extra arguments too, so `let` is the one place where the
+statements you wrote just vanish. `--fix` rewrites the head to
+`let-do`, which runs every body form and returns the last.
+
+That rewrite changes what the code does, which is unusual for a fix
+here and is the whole point of this one: the dropped forms are dead
+either way, and running them is what the code was written to do. It
+can also stop the file compiling, because `let-do` type-checks the
+forms `let` never looked at and wants the non-final ones to be `()` —
+a loud failure in place of a silent one. Comments are counted as
+comments, not body forms, so `(let [x 1] (f x) ; note` stays quiet,
+and `let-do` is never reported.
+
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.
 

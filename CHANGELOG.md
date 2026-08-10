@@ -48,6 +48,16 @@ the project follows [Semantic Versioning](https://semver.org/).
   compound form on either side is left alone. It is only ever reported,
   never fixed — `(= x x)` is `false` for a NaN float, so folding it to
   `true` would break the idiomatic NaN test.
+- New rule `discarded-let-body`, on by default: a plain `let` whose
+  body has more than one form is now reported. Carp evaluates the
+  first one and drops the rest without compiling, type-checking or
+  running them, and says nothing about it — so
+  `(let [x (f)] (g x) (h x))` never calls `h`. `--fix` rewrites the
+  head to `let-do`, which runs every body form and returns the last.
+  That rewrite changes what the code does on purpose; it can also stop
+  a file compiling, since `let-do` type-checks the forms `let` never
+  looked at. A comment is not a body form, and `let-do` is never
+  reported.
 - New rule `unused-let-binding`, on by default: a `let` or `let-do`
   binding whose name occurs in none of the initialisers that follow it
   and nowhere in the body is now reported. `set!` counts as a use, as

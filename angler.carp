@@ -1200,6 +1200,38 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private rule-discarded-let-body)
+  (hidden rule-discarded-let-body)
+  (defn rule-discarded-let-body [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (let [n (code-count items)]
+            (if (and (Int.> n 3) (sym? (nth-code-form items 0) "let"))
+              (match-ref (nth-code-form items 1)
+                (Form.Arr _)
+                  (dx info
+                      "discarded-let-body"
+                      &(fmt
+                        "let evaluates only the first of its %d body forms; the rest are discarded"
+                        (Int.- n 2))
+                      (Form.str f))
+                _ (Maybe.Nothing))
+              (Maybe.Nothing)))
+        _ (Maybe.Nothing))))
+
+  (private fix-discarded-let-body)
+  (hidden fix-discarded-let-body)
+  (defn fix-discarded-let-body [l src]
+    (match-ref (Located.form l)
+      (Form.Lst items)
+        (if (and (Int.> (code-count items) 3)
+                 (sym? (nth-code-form items 0) "let"))
+          (rehead-fix l src "let-do")
+          (Maybe.Nothing))
+      _ (Maybe.Nothing)))
+
   (private let-form-head)
   (hidden let-form-head)
   (defn let-form-head [f]
@@ -1972,6 +2004,10 @@ rule names satisfy `keep?`.")
       (register-rule! @"unused-let-binding"
                       @"a let/let-do binding that is never referenced"
                       rule-unused-let-binding)
+      (register-rule! @"discarded-let-body"
+                      @"a let whose body has more than one form; only the first runs"
+                      rule-discarded-let-body)
+      (register-fix! @"discarded-let-body" fix-discarded-let-body)
       (register-rule! @"unused-suppression"
                       @"an angler-disable directive that suppressed nothing"
                       quiet-rule)
