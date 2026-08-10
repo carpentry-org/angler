@@ -5,6 +5,10 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- Linting a file whose comments hold enough non-ASCII text no longer
+  aborts the whole run. A comment such as `; Implementors’ note: …`
+  was enough to kill angler before it reported anything, which is why
+  it could not lint the Carp compiler's own `core/Derive.carp`.
 - Findings can be suppressed in place, from a comment in the linted
   file, instead of only by turning a rule off for the whole run.
   `; angler-disable-next-line` covers the line below the comment,

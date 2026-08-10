@@ -172,6 +172,13 @@ a `Form.Sym` matching `name`.")
           (and (Char.>= c \A) (Char.<= c \Z)))
       (or (and (Char.>= c \0) (Char.<= c \9)) (or (Char.= c \-) (Char.= c \_)))))
 
+  (private starts-with-bytes?)
+  (hidden starts-with-bytes?)
+  ; core's starts-with? guards on byte length but slices characters
+  (defn starts-with-bytes? [s sub]
+    (let [n (String.length sub)]
+      (and (Int.>= (String.length s) n) (= sub &(String.byte-slice s 0 n)))))
+
   (private all-name-bytes?)
   (hidden all-name-bytes?)
   (defn all-name-bytes? [s]
@@ -1296,7 +1303,7 @@ skipped. Returns the number of rules loaded, or a parse error.")
       (Form.Sym segs)
         (if (Int.= 1 (Array.length segs))
           (let [s (Array.unsafe-nth segs 0)]
-            (if (String.starts-with? s "_") (Maybe.Nothing) (Maybe.Just @s)))
+            (if (starts-with-bytes? s "_") (Maybe.Nothing) (Maybe.Just @s)))
           (Maybe.Nothing))
       _ (Maybe.Nothing)))
 
@@ -1487,7 +1494,7 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (= &head "angler-disable-next-line")
               (make-suppression rest (Int.inc line) info text)
             (or (= &head "angler-disable")
-                (String.starts-with? &head "angler-disable-"))
+                (starts-with-bytes? &head "angler-disable-"))
               (make-suppression (the (Array String) []) target-bad info text)
             (Maybe.Nothing))))))
 
