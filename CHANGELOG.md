@@ -62,6 +62,18 @@ the project follows [Semantic Versioning](https://semver.org/).
   a file compiling, since `let-do` type-checks the forms `let` never
   looked at. A comment is not a body form, and `let-do` is never
   reported.
+- New rule `shadowed-let-binding`, on by default: a `let` or `let-do`
+  binding whose name is bound again later in the same vector, with no
+  use of it in between, is now reported. `(let [x 1 x 2] x)` computes
+  the `1` and throws it away; `(let [x 1 x (+ x 1)] x)` is a deliberate
+  pipeline and stays quiet, as does any rebinding whose intervening
+  initialisers mention the name. It follows the conventions of
+  `unused-let-binding`: names starting with `_` are exempt, a dotted
+  symbol segment counts as a use, an odd binding vector is left alone,
+  and an `unquote` or `unquote-splicing` anywhere in the form silences
+  it. Three or more bindings of one name are one finding. Reported
+  only, never fixed — the dead initialiser may be there for its side
+  effect.
 - New rule `unused-let-binding`, on by default: a `let` or `let-do`
   binding whose name occurs in none of the initialisers that follow it
   and nowhere in the body is now reported. `set!` counts as a use, as
