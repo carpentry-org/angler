@@ -43,7 +43,7 @@ and
 <p>Most users invoke <code>angler</code> as a CLI (<code>angler FILE…</code>). The library
 surface is documented here for plugin authors and programmatic
 consumers. See
-<a href="https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md">the documentation on writing rules</a>.</p>
+<a href="https://github.com/carpentry-org/angler#using-it-as-a-library">the documentation on writing rules</a>.</p>
 <pre><code>(load &quot;git@github.com:carpentry-org/angler@0.4.0&quot;)
 
 (match (Lint.lint-source &quot;(do x)&quot;)
@@ -53,7 +53,7 @@ consumers. See
 </code></pre>
 <h3>Modules</h3>
 <ul>
-<li><a href="./Lint.html"><code>Lint</code></a>, the rule registry, walker, and public entry points (<code>lint</code>, <code>lint-with</code>, <code>lint-source</code>, <code>lint-source-with</code>, <code>register-rule!</code>, <code>list-rules</code>).</li>
+<li><a href="./Lint.html"><code>Lint</code></a>, the rule registry, walker, and public entry points (<code>lint</code>, <code>lint-with</code>, <code>lint-source</code>, <code>lint-source-with</code>, <code>register-rule!</code>, <code>register-file-rule!</code>, <code>list-rules</code>).</li>
 <li><a href="./Diagnostic.html"><code>Diagnostic</code></a>, one finding's data and renderer (<code>line:col: [rule] message</code>).</li>
 <li><a href="./Rule.html"><code>Rule</code></a>, the registry entry: name, description, and matcher function.</li>
 </ul>
@@ -80,6 +80,12 @@ consumers. See
 <li><code>--list-rules</code>, prints the registry and exits.</li>
 <li><code>-h</code>, <code>--help</code>, prints usage.</li>
 </ul>
+<h3>Suppressing findings</h3>
+<p>A <code>; angler-disable-next-line</code>, <code>; angler-disable-line</code> or
+<code>; angler-disable-file</code> comment in the linted file switches rules off
+for the line below it, its own line, or the whole file. Each takes a
+space- or comma-separated list of rule names; none means every rule.
+Suppression applies to <code>--fix</code> as well as to reporting.</p>
 
                 </div>
             </a>

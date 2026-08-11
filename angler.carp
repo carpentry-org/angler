@@ -40,6 +40,14 @@ am sure of”, and the finding is then reported but not fixed.")
 (deftype FixRule [name String
                   fn (Fn [(Ref Located) (Ref String)] (Maybe Fix))])
 
+(doc FileRule "is a rule over a whole source file rather than a single
+node. `fn` gets every top-level form and returns one `Diagnostic` per
+finding, so it can tell a form's nesting depth and can let one part of
+a file decide whether another part is reported.")
+(deftype FileRule
+  [name String
+   fn (Fn [(Ref (Array (Box Located)))] (Array Diagnostic))])
+
 (doc Suppression "is one inline `; angler-disable-…` directive. `rules`
 are the rule names it covers, empty meaning all of them; `target` is
 the line it applies to, `-1` for the whole file and `-2` for a comment
@@ -56,9 +64,8 @@ the comment's own position, and `text` its bytes after the `;`.")
 (doc Lint "is the linter's core: the rule registry, the AST walker, and the
 public entry points (`lint`, `lint-with`, `lint-source`,
 `lint-source-with`). Plugin authors interact with it via
-`register-rule!`. See
-[`WRITING-RULES.md`](https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md)
-for the rule-author guide.")
+`register-rule!` for a rule over one node and `register-file-rule!` for
+one over a whole file.")
 (defmodule Lint
   (private *rules*)
   (hidden *rules*)
@@ -80,9 +87,28 @@ strict ordering, register from `main` instead of from a top-level
   (defn register-rule! [name description fn]
     (set! *rules* (Array.push-back @&*rules* (Rule.init name description fn))))
 
+  (private *file-rules*)
+  (hidden *file-rules*)
+  (def *file-rules* (the (Array FileRule) []))
+
+  (doc register-file-rule! "registers a whole-file rule under `name`
+with a one-line `description`. `f` gets the file's top-level forms and
+returns every finding it has; use it for what a `Rule` cannot see from
+one node — whether a form sits at top level, or whether something
+written elsewhere in the file exempts it.
+
+A file rule lists under `list-rules`, answers to `--only` and
+`--disable`, and honours inline `; angler-disable-…` directives, all
+like a node rule. It cannot carry a `--fix`. The `register-rule!`
+caveat about top-level `def` ordering applies here too.")
+  (defn register-file-rule! [name description f]
+    (do
+      (register-rule! @&name description (fn [_] (Maybe.Nothing)))
+      (set! *file-rules* (Array.push-back @&*file-rules* (FileRule.init name f)))))
+
   (doc list-rules "returns a copy of the currently registered rule
-registry. Useful for `angler --list-rules` and for plugins that want
-to inspect the active rule set.")
+registry, file rules included. Useful for `angler --list-rules` and
+for plugins that want to inspect the active rule set.")
   (defn list-rules [] @&*rules*)
 
   (doc nth-form "pulls the `Form` out of the i-th `Located` child of
@@ -1528,6 +1554,83 @@ skipped. Returns the number of rules loaded, or a parse error.")
         (set! out (Array.push-back out @(Array.unsafe-nth &others i))))
       out))
 
+  (private use-form?)
+  (hidden use-form?)
+  (defn use-form? [f]
+    (match-ref f
+      (Form.Lst items)
+        (and (Int.> (code-count items) 0)
+             (let [h (nth-code-form items 0)]
+               (or (sym? h "use") (sym? h "use-all"))))
+      _ false))
+
+  (private main-defn?)
+  (hidden main-defn?)
+  (defn main-defn? [f]
+    (match-ref f
+      (Form.Lst items)
+        (and (Int.>= (code-count items) 2)
+             (and (sym? (nth-code-form items 0) "defn")
+                  (sym? (nth-code-form items 1) "main")))
+      _ false))
+
+  (private test-marker?)
+  (hidden test-marker?)
+  (defn test-marker? [f]
+    (match-ref f
+      (Form.Sym segs)
+        (let [n (Array.length segs)]
+          (and (Int.> n 0)
+               (let [name (Array.unsafe-nth segs (Int.dec n))]
+                 (or
+                   (or (= name "deftest") (= name "with-test"))
+                   (starts-with-bytes? name "assert-")))))
+      _ false))
+
+  (private has-test-marker?)
+  (hidden has-test-marker?)
+  (defn has-test-marker? [forms]
+    (let-do [found false]
+      (for [i 0 (Array.length forms)]
+        (match-ref (Located.form (Box.peek (Array.unsafe-nth forms i)))
+          (Form.Lst items)
+            (when (or
+                (and (Int.> (code-count items) 0)
+                     (test-marker? (nth-code-form items 0)))
+                (has-test-marker? items))
+              (set! found true))
+          (Form.Arr items) (when (has-test-marker? items) (set! found true))
+          (Form.StaticArr items)
+            (when (has-test-marker? items) (set! found true))
+          (Form.Dict items) (when (has-test-marker? items) (set! found true))
+          _ ()))
+      found))
+
+  (private entry-point-file?)
+  (hidden entry-point-file?)
+  (defn entry-point-file? [forms]
+    (let-do [found false]
+      (for [i 0 (Array.length forms)]
+        (when (main-defn? (Located.form (Box.peek (Array.unsafe-nth forms i))))
+          (set! found true)))
+      (or found (has-test-marker? forms))))
+
+  (private rule-leaky-top-level-use)
+  (hidden rule-leaky-top-level-use)
+  (defn rule-leaky-top-level-use [forms]
+    (let-do [out (the (Array Diagnostic) [])]
+      (unless (entry-point-file? forms)
+        (for [i 0 (Array.length forms)]
+          (let [l (Box.peek (Array.unsafe-nth forms i))]
+            (when (use-form? (Located.form l))
+              (set! out
+                    (push-maybe! out
+                                 (dx (Located.info l)
+                                     "leaky-top-level-use"
+                                     "a top-level use leaks into every file that loads this one, where the names it brings in can make a bare name ambiguous; put it inside the defmodule that needs it"
+                                     (Form.str (Located.form l)))))))))
+      out))
+
   (private target-file)
   (hidden target-file)
   (def target-file -1)
@@ -1796,11 +1899,22 @@ skipped. Returns the number of rules loaded, or a parse error.")
             _ ())))
       acc))
 
+  (private file-diags)
+  (hidden file-diags)
+  (defn file-diags [forms keep?]
+    (let-do [acc (the (Array Diagnostic) [])
+             n (Array.length &*file-rules*)]
+      (for [i 0 n]
+        (let [r (Array.unsafe-nth &*file-rules* i)]
+          (when (~keep? (FileRule.name r))
+            (set! acc (extend! acc (~(FileRule.fn r) forms))))))
+      acc))
+
   (private lint-all)
   (hidden lint-all)
   (defn lint-all [forms keep?]
     (let [sups (collect-suppressions forms)
-          diags (walk forms keep? 0)]
+          diags (extend! (walk forms keep? 0) (file-diags forms keep?))]
       (extend! (keep-diags &sups &diags)
                (keep-diags &sups &(suppression-diags &sups &diags keep?)))))
 
@@ -2122,4 +2236,7 @@ rule names satisfy `keep?`.")
       (register-rule! @"unknown-suppression-directive"
                       @"a comment that opens like an angler-disable directive but is not one"
                       quiet-rule)
+      (register-file-rule! @"leaky-top-level-use"
+                           @"a use/use-all at the top level of a file others load"
+                           rule-leaky-top-level-use)
       0)))

@@ -676,10 +676,42 @@
   (assert-false t (has-rule? "; angler-disable-next-line discarded-let-body
 (let [x 1] (f x) (g x))" "discarded-let-body") "angler-disable-next-line silences discarded-let-body")
 
+  (assert-true t
+    (has-rule? "(use Foo)" "leaky-top-level-use")
+    "a top-level use is reported")
+  (assert-true t
+    (has-rule? "(use-all Foo Bar)" "leaky-top-level-use")
+    "a top-level use-all is reported")
+  (assert-equal t 2 (count-rule "(use Foo)
+(use-all Bar Baz)" "leaky-top-level-use") "every top-level use is reported, not just the first")
+  (assert-false t
+    (has-rule? "(defmodule Foo (use Bar) (defn f [] 1))" "leaky-top-level-use")
+    "a use inside a defmodule stays inside it and is not reported")
+  (assert-false t
+    (has-rule? "'(use Foo)" "leaky-top-level-use")
+    "a quoted use is data")
+  (assert-false t (has-rule? "(use Foo)
+(defn main [] 1)" "leaky-top-level-use") "a file with a main is nobody's dependency")
+  (assert-false t (has-rule? "(use Test)
+(deftest t t)" "leaky-top-level-use") "a file with a deftest is nobody's dependency")
+  (assert-false t (has-rule? "(use Test)
+(with-test t t)" "leaky-top-level-use") "a file with a with-test is nobody's dependency")
+  (assert-false t (has-rule? "(use Test)
+(Suite.defsuite addition (assert-equal test 2 (+ 1 1) \"adds\"))" "leaky-top-level-use") "a file that asserts something is a test whatever ran it")
+  (assert-false t (has-rule? "; angler-disable-next-line leaky-top-level-use
+(use Foo)" "leaky-top-level-use") "angler-disable-next-line silences leaky-top-level-use")
   (assert-equal t
-    37
+    0
+    (count-with &(fn [n] (/= n "leaky-top-level-use"))
+                "(use Foo)"
+                "leaky-top-level-use")
+    "disabling leaky-top-level-use drops it")
+  (assert-equal t "(use Foo)" &(fix! "(use Foo)") "a file rule has no rewrite")
+
+  (assert-equal t
+    38
     (Array.length &(Lint.list-rules))
-    "34 built-ins + 3 top-level-registered test rules = 37")
+    "35 built-ins + 3 top-level-registered test rules = 38")
 
   (assert-equal t
     0
@@ -700,9 +732,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    37
+    38
     (Array.length &(Lint.list-rules))
-    "after top-level register, 37 rules total")
+    "after top-level register, 38 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -907,9 +939,9 @@ w
       (Result.Success _) false)
     "surfaces a parse error for a string with an invalid escape")
   (assert-equal t
-    39
+    40
     (Array.length &(Lint.list-rules))
-    "37 previous + 2 loaded from source = 39")
+    "38 previous + 2 loaded from source = 40")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -1378,9 +1410,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    40
+    41
     (Array.length &(Lint.list-rules))
-    "39 previous + 1 loaded with a template = 40")
+    "40 previous + 1 loaded with a template = 41")
 
   (assert-true t
     (match (Lint.load-rules-from-source!

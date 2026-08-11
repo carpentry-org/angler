@@ -5,6 +5,22 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- New rule `leaky-top-level-use`, on by default: a `use` or `use-all`
+  written at a file's top level is now reported. Carp scopes a `use` to
+  the form it is written in, and a file's top level is not a form, so
+  the names it brings in reach every file that `load`s this one and can
+  turn a bare name there into an ambiguous-symbol error — in a file the
+  library's own author never sees. The same `use` inside the `defmodule`
+  that needs it is fine. Files nobody can load are exempt: a top-level
+  `defn main`, or a `deftest`, a `with-test` or any `assert-…` call
+  anywhere in the file, marks a program or a test, where `(use Test)` is
+  idiomatic. Reported only, never fixed.
+- Rules can now be written over a whole file instead of a single node.
+  `Lint.register-file-rule!` takes a function from a file's top-level
+  forms to its findings, which is what it takes to know whether a form
+  sits at top level or to let one part of a file exempt another. Such a
+  rule lists, filters and suppresses like any other.
+  `Lint.register-rule!` is unchanged.
 - Linting a file whose comments hold enough non-ASCII text no longer
   aborts the whole run. A comment such as `; Implementors’ note: …`
   was enough to kill angler before it reported anything, which is why
