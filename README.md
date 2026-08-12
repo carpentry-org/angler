@@ -115,6 +115,29 @@ a loud failure in place of a silent one. Comments are counted as
 comments, not body forms, so `(let [x 1] (f x) ; note` stays quiet,
 and `let-do` is never reported.
 
+`leaky-top-level-use` is off by default; run it with `--only
+leaky-top-level-use`. It reports a `use` or `use-all` written at a
+file's top level. Carp scopes a `use` to the form it sits in, and a file's top
+level is not a form: the names it brings in are visible in every file
+that `load`s this one, where a bare name that resolved before can become
+ambiguous. That is a compile error in someone else's file, in a place
+the library's own author never sees. The same `use` inside the
+`defmodule` that needs it has none of that reach.
+
+Files nobody can load are exempt. A top-level `defn main`, or a
+`deftest`, a `with-test` or any `assert-…` call anywhere in the file,
+marks a program or a test rather than a library — and `(use Test)` at
+the top of a test file is idiomatic. The rule is reported only; where
+the `use` should go instead depends on which names the file actually
+needs.
+
+That exemption is a heuristic, which is why the rule is opt-in. An
+example or a sketch whose entry point belongs to a framework — an
+`anima` sketch defining `setup` and `draw`, say — has no `main` and no
+test marker, so the rule reports it even though nothing loads it. Point
+the rule at library sources and it earns its keep; point it at an
+`examples/` directory and it does not.
+
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.
 
@@ -230,6 +253,44 @@ get one from a fourth element:
 
 Only give a rule a template when the rewrite is unconditionally
 semantics-preserving; `--fix` applies it without asking.
+
+### Whole-file rules
+
+`Lint.register-rule!` takes a rule over one node, which is what most
+rules need. `Lint.register-file-rule!` takes one over a whole file:
+
+```clojure
+(Lint.register-file-rule! @"leaky-top-level-use"
+                          @"a use/use-all at the top level of a file others load"
+                          rule-leaky-top-level-use)
+```
+
+Its function receives the file's top-level forms —
+`(Fn [&(Array (Box Located))] (Array Diagnostic))` — and returns every
+finding it has. That gives it the two things a node rule cannot have:
+it knows whether a form sits at top level, and it can let something
+written elsewhere in the file decide whether a form is reported at all.
+`leaky-top-level-use` needs both.
+
+A file rule shows up in `--list-rules`, answers to `--only` and
+`--disable`, and honours inline `angler-disable` directives like any
+other rule. It cannot carry a `--fix`.
+
+### Rules that are off by default
+
+`Lint.mark-opt-in!` marks a rule — node or file — as off by default,
+for a finding that is a judgement call rather than a defect:
+
+```clojure
+(Lint.mark-opt-in! @"leaky-top-level-use")
+```
+
+An opt-in rule is skipped by `Lint.lint` and `Lint.lint-source`, runs
+under `Lint.lint-with` and `Lint.lint-source-with` whenever the
+caller's `keep?` admits it (the caller is already stating the policy),
+and runs from the CLI only when `--only` names it. `--list-rules` marks
+it `[opt-in]`. Registering one therefore does not change what an
+existing run reports.
 
 <hr/>
 

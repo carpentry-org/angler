@@ -14,7 +14,7 @@ and
 Most users invoke `angler` as a CLI (`angler FILE…`). The library
 surface is documented here for plugin authors and programmatic
 consumers. See
-[the documentation on writing rules](https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md).
+[the documentation on writing rules](https://github.com/carpentry-org/angler#using-it-as-a-library).
 
 ```
 (load \"git@github.com:carpentry-org/angler@0.4.0\")
@@ -26,7 +26,7 @@ consumers. See
 ```
 
 ### Modules
-- [`Lint`](./Lint.html), the rule registry, walker, and public entry points (`lint`, `lint-with`, `lint-source`, `lint-source-with`, `register-rule!`, `list-rules`).
+- [`Lint`](./Lint.html), the rule registry, walker, and public entry points (`lint`, `lint-with`, `lint-source`, `lint-source-with`, `register-rule!`, `register-file-rule!`, `list-rules`).
 - [`Diagnostic`](./Diagnostic.html), one finding's data and renderer (`line:col: [rule] message`).
 - [`Rule`](./Rule.html), the registry entry: name, description, and matcher function.
 

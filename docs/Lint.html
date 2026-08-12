@@ -43,9 +43,9 @@
                     <p>is the linter's core: the rule registry, the AST walker, and the
 public entry points (<code>lint</code>, <code>lint-with</code>, <code>lint-source</code>,
 <code>lint-source-with</code>). Plugin authors interact with it via
-<code>register-rule!</code>. See
-<a href="https://github.com/carpentry-org/angler/blob/main/docs/WRITING-RULES.md"><code>WRITING-RULES.md</code></a>
-for the rule-author guide.</p>
+<code>register-rule!</code> for a rule over one node and <code>register-file-rule!</code> for
+one over a whole file, and <code>mark-opt-in!</code> for a rule that should run
+only when it is asked for.</p>
 
                 </div>
                 <div class="binder">
@@ -71,6 +71,10 @@ until it reaches a fixpoint or a fixed pass limit. Only the bytes of
 fixed forms change, so formatting and comments elsewhere are
 preserved. A parse error is returned as such, and clean input comes
 back byte-identical.</p>
+<p>Nothing under a <code>quote</code> or a <code>quasiquote</code> is ever rewritten: the first
+is data, and a splice makes the arity of the second unknowable at lint
+time. The argument of an <code>unquote</code> or <code>unquote-splicing</code> inside a
+<code>quasiquote</code> is ordinary code, and is fixed as such.</p>
 
                     </p>
                 </div>
@@ -134,6 +138,17 @@ called <code>name</code>.</p>
                     <p class="doc">
                         <p>applies every registered rule to every node in <code>forms</code>,
 recursing into compound forms. Returns one <code>Diagnostic</code> per finding.</p>
+<p>A form under a <code>quote</code> is data, and is neither reported nor recursed
+into. A form under a <code>quasiquote</code> is a template for code, so it is
+still reported; the argument of an <code>unquote</code> or <code>unquote-splicing</code>
+inside one is ordinary code again.</p>
+<p>Findings covered by an inline <code>; angler-disable-…</code> directive are
+dropped, and directives that are unused, name a rule that does not
+exist, or open like a directive without being one are reported under
+<code>unused-suppression</code>, <code>unknown-suppression-rule</code> and
+<code>unknown-suppression-directive</code>.</p>
+<p>Rules marked with <code>mark-opt-in!</code> are skipped; ask for them by name
+through <code>lint-with</code>.</p>
 
                     </p>
                 </div>
@@ -154,9 +169,8 @@ recursing into compound forms. Returns one <code>Diagnostic</code> per finding.<
                     </pre>
                     <p class="doc">
                         <p>parses <code>src</code> via <code>Reader.parse</code> and lints with
-every registered rule. Returns <code>(Result (Array Diagnostic) ParseErr)</code>
-so a parse failure surfaces distinctly from a clean parse with
-diagnostics.</p>
+every registered rule that is on by default. Returns <code>(Result (Array Diagnostic) ParseErr)</code> so a parse failure surfaces distinctly from a
+clean parse with diagnostics.</p>
 
                     </p>
                 </div>
@@ -177,7 +191,7 @@ diagnostics.</p>
                     </pre>
                     <p class="doc">
                         <p>like <code>lint-source</code>, but only runs rules whose
-names satisfy <code>keep?</code>.</p>
+names satisfy <code>keep?</code>. An opt-in rule runs if <code>keep?</code> admits it.</p>
 
                     </p>
                 </div>
@@ -198,7 +212,8 @@ names satisfy <code>keep?</code>.</p>
                     </pre>
                     <p class="doc">
                         <p>like <code>lint</code>, but only runs rules whose names satisfy
-<code>keep?</code>.</p>
+<code>keep?</code>. An opt-in rule runs if <code>keep?</code> admits it: the caller is
+stating the policy.</p>
 
                     </p>
                 </div>
@@ -219,8 +234,8 @@ names satisfy <code>keep?</code>.</p>
                     </pre>
                     <p class="doc">
                         <p>returns a copy of the currently registered rule
-registry. Useful for <code>angler --list-rules</code> and for plugins that want
-to inspect the active rule set.</p>
+registry, file rules included. Useful for <code>angler --list-rules</code> and
+for plugins that want to inspect the active rule set.</p>
 
                     </p>
                 </div>
@@ -271,6 +286,33 @@ a <code>Form.Sym</code> matching <code>name</code>.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#mark-opt-in!">
+                        <h3 id="mark-opt-in!">
+                            mark-opt-in!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String] ())
+                    </p>
+                    <pre class="args">
+                        (mark-opt-in! name)
+                    </pre>
+                    <p class="doc">
+                        <p>marks the rule called <code>name</code> as off by default, so
+it runs only when it is asked for by name. Use it for a rule whose
+finding is a judgement call rather than a defect, so registering it
+does not change what an existing run reports.</p>
+<p><code>lint</code> and <code>lint-source</code> skip an opt-in rule. <code>lint-with</code> and
+<code>lint-source-with</code> run whatever their <code>keep?</code> admits — the caller is
+already stating the policy — and the CLI runs an opt-in rule when
+<code>--only</code> names it.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#nth-form">
                         <h3 id="nth-form">
                             nth-form
@@ -310,6 +352,57 @@ the position, when descending into a compound form's children.</p>
                     <p class="doc">
                         <p>returns the i-th <code>Located</code> child of an <code>Array (Box Located)</code>. Use it over <code>nth-form</code> when a rule or fix needs the child's
 source position as well as its shape.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#opt-in?">
+                        <h3 id="opt-in?">
+                            opt-in?
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref String StaticLifetime)] Bool)
+                    </p>
+                    <pre class="args">
+                        (opt-in? name)
+                    </pre>
+                    <p class="doc">
+                        <p>true iff the rule called <code>name</code> was marked off by
+default with <code>mark-opt-in!</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
+                    <a class="anchor" href="#register-file-rule!">
+                        <h3 id="register-file-rule!">
+                            register-file-rule!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String, String, (Fn [(Ref (Array (Box Located)) a)] (Array Diagnostic))] ())
+                    </p>
+                    <pre class="args">
+                        (register-file-rule! name description f)
+                    </pre>
+                    <p class="doc">
+                        <p>registers a whole-file rule under <code>name</code>
+with a one-line <code>description</code>. <code>f</code> gets the file's top-level forms and
+returns every finding it has; use it for what a <code>Rule</code> cannot see from
+one node — whether a form sits at top level, or whether something
+written elsewhere in the file exempts it.</p>
+<p>A file rule lists under <code>list-rules</code>, answers to <code>--only</code> and
+<code>--disable</code>, and honours inline <code>; angler-disable-…</code> directives, all
+like a node rule. It cannot carry a <code>--fix</code>. It is on by default like a
+node rule; pair it with <code>mark-opt-in!</code> if it should not be. The
+<code>register-rule!</code> caveat about top-level <code>def</code> ordering applies here
+too.</p>
 
                     </p>
                 </div>
@@ -358,7 +451,9 @@ skipped by <code>fix-source</code>.</p>
                         <p>is <code>register-pattern-rule!</code> plus a
 rewrite: <code>template-str</code> is source text in which every <code>?name</code> is
 replaced by the <em>original bytes</em> the metavariable matched, and the
-matched node is replaced by the result.</p>
+matched node is replaced by the result. A <code>?</code> that is not followed by
+a name character is literal text, so <code>(unless (empty? ?x) ?y)</code> is a
+valid template.</p>
 <pre><code>(Lint.register-pattern-fix-rule! @&quot;double-not&quot;
                                  @&quot;(not (not x)) is just x&quot;
                                  &quot;(not (not ?x))&quot;
@@ -388,9 +483,11 @@ semantics-preserving: <code>fix-source</code> applies it without asking.</p>
                     <p class="doc">
                         <p>registers a lint rule that fires when
 <code>pattern-str</code> (a single Carp form) structurally matches a node.
-Symbols starting with <code>?</code> are metavariables: they match any form,
-and if the same <code>?name</code> appears more than once the bound forms
-must have equal string representations.</p>
+Symbols starting with <code>?</code> followed by one or more name characters and
+nothing else are metavariables: they match any form, and if the same
+<code>?name</code> appears more than once the bound forms must have equal string
+representations. Any other symbol starting with <code>?</code> is an ordinary
+symbol and matches literally.</p>
 <pre><code>(Lint.register-pattern-rule! @&quot;set-self&quot;
                              @&quot;(set! x x) is a no-op&quot;
                              &quot;(set! ?x ?x)&quot;

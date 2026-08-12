@@ -90,7 +90,10 @@
     (IO.println "  ; angler-disable-file [RULES]        the whole file")
     (IO.println "")
     (IO.println
-      "RULES is a space- or comma-separated list; none means every rule.")))
+      "RULES is a space- or comma-separated list; none means every rule.")
+    (IO.println "")
+    (IO.println
+      "a rule marked [opt-in] by --list-rules runs only when --only names it.")))
 
 (private print-rules!)
 (hidden print-rules!)
@@ -99,15 +102,21 @@
            n (Array.length &rs)]
     (for [i 0 n]
       (let [r (Array.unsafe-nth &rs i)
-            tag (if (Lint.fixable? (Rule.name r)) @"[fix]" @"")]
+            tag (cond
+              (Lint.opt-in? (Rule.name r)) @"[opt-in]"
+              (Lint.fixable? (Rule.name r)) @"[fix]"
+              @"")]
         (IO.println
-          &(fmt "%-30s %-5s %s" (Rule.name r) &tag (Rule.description r)))))))
+          &(fmt "%-30s %-8s %s" (Rule.name r) &tag (Rule.description r)))))))
 
 (private keep?)
 (hidden keep?)
 (defn keep? [only disable name]
   (and
-    (or (Int.= 0 (Array.length only)) (Array.contains? only name))
+    (if (Lint.opt-in? name)
+      ; an opt-in rule runs only when --only names it, never from a bare run
+      (Array.contains? only name)
+      (or (Int.= 0 (Array.length only)) (Array.contains? only name)))
     (not (Array.contains? disable name))))
 
 (defn main []
