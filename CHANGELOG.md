@@ -5,6 +5,8 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.5.0]
+
 - New rule `leaky-top-level-use`, off by default — run it with
   `--only leaky-top-level-use`. A `use` or `use-all` written at a
   file's top level is reported. Carp scopes a `use` to
