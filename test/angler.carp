@@ -70,6 +70,12 @@
         (set! n (Int.inc n))))
     n))
 
+; leaky-top-level-use is opt-in, so a default lint never runs it and an
+; assertion made through `has-rule?` would hold whatever the rule does
+(defn count-leaky [src] (count-with &(fn [_] true) src "leaky-top-level-use"))
+
+(defn leaky? [src] (Int.> (count-leaky src) 0))
+
 (def -register-test-rule
   (do
     (Lint.register-rule! @"marker-rule"
@@ -677,29 +683,29 @@
 (let [x 1] (f x) (g x))" "discarded-let-body") "angler-disable-next-line silences discarded-let-body")
 
   (assert-true t
+    (Lint.opt-in? "leaky-top-level-use")
+    "leaky-top-level-use is marked opt-in")
+  (assert-false t
     (has-rule? "(use Foo)" "leaky-top-level-use")
-    "a top-level use is reported")
-  (assert-true t
-    (has-rule? "(use-all Foo Bar)" "leaky-top-level-use")
-    "a top-level use-all is reported")
-  (assert-equal t 2 (count-rule "(use Foo)
-(use-all Bar Baz)" "leaky-top-level-use") "every top-level use is reported, not just the first")
+    "an opt-in rule stays quiet on a default run")
+  (assert-true t (leaky? "(use Foo)") "a top-level use is reported")
+  (assert-true t (leaky? "(use-all Foo Bar)") "a top-level use-all is reported")
+  (assert-equal t 2 (count-leaky "(use Foo)
+(use-all Bar Baz)") "every top-level use is reported, not just the first")
   (assert-false t
-    (has-rule? "(defmodule Foo (use Bar) (defn f [] 1))" "leaky-top-level-use")
+    (leaky? "(defmodule Foo (use Bar) (defn f [] 1))")
     "a use inside a defmodule stays inside it and is not reported")
-  (assert-false t
-    (has-rule? "'(use Foo)" "leaky-top-level-use")
-    "a quoted use is data")
-  (assert-false t (has-rule? "(use Foo)
-(defn main [] 1)" "leaky-top-level-use") "a file with a main is nobody's dependency")
-  (assert-false t (has-rule? "(use Test)
-(deftest t t)" "leaky-top-level-use") "a file with a deftest is nobody's dependency")
-  (assert-false t (has-rule? "(use Test)
-(with-test t t)" "leaky-top-level-use") "a file with a with-test is nobody's dependency")
-  (assert-false t (has-rule? "(use Test)
-(Suite.defsuite addition (assert-equal test 2 (+ 1 1) \"adds\"))" "leaky-top-level-use") "a file that asserts something is a test whatever ran it")
-  (assert-false t (has-rule? "; angler-disable-next-line leaky-top-level-use
-(use Foo)" "leaky-top-level-use") "angler-disable-next-line silences leaky-top-level-use")
+  (assert-false t (leaky? "'(use Foo)") "a quoted use is data")
+  (assert-false t (leaky? "(use Foo)
+(defn main [] 1)") "a file with a main is nobody's dependency")
+  (assert-false t (leaky? "(use Test)
+(deftest t t)") "a file with a deftest is nobody's dependency")
+  (assert-false t (leaky? "(use Test)
+(with-test t t)") "a file with a with-test is nobody's dependency")
+  (assert-false t (leaky? "(use Test)
+(Suite.defsuite addition (assert-equal test 2 (+ 1 1) \"adds\"))") "a file that asserts something is a test whatever ran it")
+  (assert-false t (leaky? "; angler-disable-next-line leaky-top-level-use
+(use Foo)") "angler-disable-next-line silences leaky-top-level-use")
   (assert-equal t
     0
     (count-with &(fn [n] (/= n "leaky-top-level-use"))

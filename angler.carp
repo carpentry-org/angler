@@ -65,7 +65,8 @@ the comment's own position, and `text` its bytes after the `;`.")
 public entry points (`lint`, `lint-with`, `lint-source`,
 `lint-source-with`). Plugin authors interact with it via
 `register-rule!` for a rule over one node and `register-file-rule!` for
-one over a whole file.")
+one over a whole file, and `mark-opt-in!` for a rule that should run
+only when it is asked for.")
 (defmodule Lint
   (private *rules*)
   (hidden *rules*)
@@ -99,8 +100,10 @@ written elsewhere in the file exempts it.
 
 A file rule lists under `list-rules`, answers to `--only` and
 `--disable`, and honours inline `; angler-disable-…` directives, all
-like a node rule. It cannot carry a `--fix`. The `register-rule!`
-caveat about top-level `def` ordering applies here too.")
+like a node rule. It cannot carry a `--fix`. It is on by default like a
+node rule; pair it with `mark-opt-in!` if it should not be. The
+`register-rule!` caveat about top-level `def` ordering applies here
+too.")
   (defn register-file-rule! [name description f]
     (do
       (register-rule! @&name description (fn [_] (Maybe.Nothing)))
@@ -339,6 +342,29 @@ called `name`.")
         (when (= name (FixRule.name (Array.unsafe-nth &*fixes* i)))
           (set! found true)))
       found))
+
+  (private *opt-in*)
+  (hidden *opt-in*)
+  (def *opt-in* (the (Array String) []))
+
+  (doc mark-opt-in! "marks the rule called `name` as off by default, so
+it runs only when it is asked for by name. Use it for a rule whose
+finding is a judgement call rather than a defect, so registering it
+does not change what an existing run reports.
+
+`lint` and `lint-source` skip an opt-in rule. `lint-with` and
+`lint-source-with` run whatever their `keep?` admits — the caller is
+already stating the policy — and the CLI runs an opt-in rule when
+`--only` names it.")
+  (defn mark-opt-in! [name] (set! *opt-in* (Array.push-back @&*opt-in* name)))
+
+  (doc opt-in? "true iff the rule called `name` was marked off by
+default with `mark-opt-in!`.")
+  (defn opt-in? [name] (Array.contains? &*opt-in* name))
+
+  (private on-by-default?)
+  (hidden on-by-default?)
+  (defn on-by-default? [name] (not (opt-in? name)))
 
   (private comment?)
   (hidden comment?)
@@ -1930,24 +1956,29 @@ Findings covered by an inline `; angler-disable-…` directive are
 dropped, and directives that are unused, name a rule that does not
 exist, or open like a directive without being one are reported under
 `unused-suppression`, `unknown-suppression-rule` and
-`unknown-suppression-directive`.")
-  (defn lint [forms] (lint-all forms &(fn [_] true)))
+`unknown-suppression-directive`.
+
+Rules marked with `mark-opt-in!` are skipped; ask for them by name
+through `lint-with`.")
+  (defn lint [forms] (lint-all forms &(fn [n] (on-by-default? n))))
 
   (doc lint-with "like `lint`, but only runs rules whose names satisfy
-`keep?`.")
+`keep?`. An opt-in rule runs if `keep?` admits it: the caller is
+stating the policy.")
   (defn lint-with [keep? forms] (lint-all forms keep?))
 
   (doc lint-source "parses `src` via `Reader.parse` and lints with
-every registered rule. Returns `(Result (Array Diagnostic) ParseErr)`
-so a parse failure surfaces distinctly from a clean parse with
-diagnostics.")
+every registered rule that is on by default. Returns `(Result (Array
+Diagnostic) ParseErr)` so a parse failure surfaces distinctly from a
+clean parse with diagnostics.")
   (defn lint-source [src]
     (match (Reader.parse src)
-      (Result.Success forms) (Result.Success (lint-all &forms &(fn [_] true)))
+      (Result.Success forms)
+        (Result.Success (lint-all &forms &(fn [n] (on-by-default? n))))
       (Result.Error e) (Result.Error e)))
 
   (doc lint-source-with "like `lint-source`, but only runs rules whose
-names satisfy `keep?`.")
+names satisfy `keep?`. An opt-in rule runs if `keep?` admits it.")
   (defn lint-source-with [keep? src]
     (match (Reader.parse src)
       (Result.Success forms) (Result.Success (lint-all &forms keep?))
@@ -2239,4 +2270,8 @@ rule names satisfy `keep?`.")
       (register-file-rule! @"leaky-top-level-use"
                            @"a use/use-all at the top level of a file others load"
                            rule-leaky-top-level-use)
+      ; a file that nothing loads — an example, a sketch driven by a
+      ; framework's own entry point — carries a top-level use harmlessly,
+      ; and a rule cannot see from the file whether anything loads it
+      (mark-opt-in! @"leaky-top-level-use")
       0)))

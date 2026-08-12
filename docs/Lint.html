@@ -44,7 +44,8 @@
 public entry points (<code>lint</code>, <code>lint-with</code>, <code>lint-source</code>,
 <code>lint-source-with</code>). Plugin authors interact with it via
 <code>register-rule!</code> for a rule over one node and <code>register-file-rule!</code> for
-one over a whole file.</p>
+one over a whole file, and <code>mark-opt-in!</code> for a rule that should run
+only when it is asked for.</p>
 
                 </div>
                 <div class="binder">
@@ -146,6 +147,8 @@ dropped, and directives that are unused, name a rule that does not
 exist, or open like a directive without being one are reported under
 <code>unused-suppression</code>, <code>unknown-suppression-rule</code> and
 <code>unknown-suppression-directive</code>.</p>
+<p>Rules marked with <code>mark-opt-in!</code> are skipped; ask for them by name
+through <code>lint-with</code>.</p>
 
                     </p>
                 </div>
@@ -166,9 +169,8 @@ exist, or open like a directive without being one are reported under
                     </pre>
                     <p class="doc">
                         <p>parses <code>src</code> via <code>Reader.parse</code> and lints with
-every registered rule. Returns <code>(Result (Array Diagnostic) ParseErr)</code>
-so a parse failure surfaces distinctly from a clean parse with
-diagnostics.</p>
+every registered rule that is on by default. Returns <code>(Result (Array Diagnostic) ParseErr)</code> so a parse failure surfaces distinctly from a
+clean parse with diagnostics.</p>
 
                     </p>
                 </div>
@@ -189,7 +191,7 @@ diagnostics.</p>
                     </pre>
                     <p class="doc">
                         <p>like <code>lint-source</code>, but only runs rules whose
-names satisfy <code>keep?</code>.</p>
+names satisfy <code>keep?</code>. An opt-in rule runs if <code>keep?</code> admits it.</p>
 
                     </p>
                 </div>
@@ -210,7 +212,8 @@ names satisfy <code>keep?</code>.</p>
                     </pre>
                     <p class="doc">
                         <p>like <code>lint</code>, but only runs rules whose names satisfy
-<code>keep?</code>.</p>
+<code>keep?</code>. An opt-in rule runs if <code>keep?</code> admits it: the caller is
+stating the policy.</p>
 
                     </p>
                 </div>
@@ -283,6 +286,33 @@ a <code>Form.Sym</code> matching <code>name</code>.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#mark-opt-in!">
+                        <h3 id="mark-opt-in!">
+                            mark-opt-in!
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [String] ())
+                    </p>
+                    <pre class="args">
+                        (mark-opt-in! name)
+                    </pre>
+                    <p class="doc">
+                        <p>marks the rule called <code>name</code> as off by default, so
+it runs only when it is asked for by name. Use it for a rule whose
+finding is a judgement call rather than a defect, so registering it
+does not change what an existing run reports.</p>
+<p><code>lint</code> and <code>lint-source</code> skip an opt-in rule. <code>lint-with</code> and
+<code>lint-source-with</code> run whatever their <code>keep?</code> admits — the caller is
+already stating the policy — and the CLI runs an opt-in rule when
+<code>--only</code> names it.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#nth-form">
                         <h3 id="nth-form">
                             nth-form
@@ -326,6 +356,27 @@ source position as well as its shape.</p>
                     </p>
                 </div>
                 <div class="binder">
+                    <a class="anchor" href="#opt-in?">
+                        <h3 id="opt-in?">
+                            opt-in?
+                        </h3>
+                    </a>
+                    <div class="description">
+                        defn
+                    </div>
+                    <p class="sig">
+                        (Fn [(Ref String StaticLifetime)] Bool)
+                    </p>
+                    <pre class="args">
+                        (opt-in? name)
+                    </pre>
+                    <p class="doc">
+                        <p>true iff the rule called <code>name</code> was marked off by
+default with <code>mark-opt-in!</code>.</p>
+
+                    </p>
+                </div>
+                <div class="binder">
                     <a class="anchor" href="#register-file-rule!">
                         <h3 id="register-file-rule!">
                             register-file-rule!
@@ -348,8 +399,10 @@ one node — whether a form sits at top level, or whether something
 written elsewhere in the file exempts it.</p>
 <p>A file rule lists under <code>list-rules</code>, answers to <code>--only</code> and
 <code>--disable</code>, and honours inline <code>; angler-disable-…</code> directives, all
-like a node rule. It cannot carry a <code>--fix</code>. The <code>register-rule!</code>
-caveat about top-level <code>def</code> ordering applies here too.</p>
+like a node rule. It cannot carry a <code>--fix</code>. It is on by default like a
+node rule; pair it with <code>mark-opt-in!</code> if it should not be. The
+<code>register-rule!</code> caveat about top-level <code>def</code> ordering applies here
+too.</p>
 
                     </p>
                 </div>

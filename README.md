@@ -115,8 +115,9 @@ a loud failure in place of a silent one. Comments are counted as
 comments, not body forms, so `(let [x 1] (f x) ; note` stays quiet,
 and `let-do` is never reported.
 
-`leaky-top-level-use` reports a `use` or `use-all` written at a file's
-top level. Carp scopes a `use` to the form it sits in, and a file's top
+`leaky-top-level-use` is off by default; run it with `--only
+leaky-top-level-use`. It reports a `use` or `use-all` written at a
+file's top level. Carp scopes a `use` to the form it sits in, and a file's top
 level is not a form: the names it brings in are visible in every file
 that `load`s this one, where a bare name that resolved before can become
 ambiguous. That is a compile error in someone else's file, in a place
@@ -129,6 +130,13 @@ marks a program or a test rather than a library — and `(use Test)` at
 the top of a test file is idiomatic. The rule is reported only; where
 the `use` should go instead depends on which names the file actually
 needs.
+
+That exemption is a heuristic, which is why the rule is opt-in. An
+example or a sketch whose entry point belongs to a framework — an
+`anima` sketch defining `setup` and `draw`, say — has no `main` and no
+test marker, so the rule reports it even though nothing loads it. Point
+the rule at library sources and it earns its keep; point it at an
+`examples/` directory and it does not.
 
 `--fix` obeys `--only` and `--disable`, and files with nothing to fix are
 not written at all. Which rules are fixable is marked in `--list-rules`.
@@ -267,6 +275,22 @@ written elsewhere in the file decide whether a form is reported at all.
 A file rule shows up in `--list-rules`, answers to `--only` and
 `--disable`, and honours inline `angler-disable` directives like any
 other rule. It cannot carry a `--fix`.
+
+### Rules that are off by default
+
+`Lint.mark-opt-in!` marks a rule — node or file — as off by default,
+for a finding that is a judgement call rather than a defect:
+
+```clojure
+(Lint.mark-opt-in! @"leaky-top-level-use")
+```
+
+An opt-in rule is skipped by `Lint.lint` and `Lint.lint-source`, runs
+under `Lint.lint-with` and `Lint.lint-source-with` whenever the
+caller's `keep?` admits it (the caller is already stating the policy),
+and runs from the CLI only when `--only` names it. `--list-rules` marks
+it `[opt-in]`. Registering one therefore does not change what an
+existing run reports.
 
 <hr/>
 
