@@ -5,6 +5,19 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- A control byte in a string literal is now escaped in a diagnostic's
+  `at:` line instead of reaching the terminal raw: `\a`, `\b`, `\t`,
+  `\v`, `\f` and `\r` render as those escapes and anything else renders
+  as `\uXXXX`, so linting a file that contains one no longer garbles the
+  report. A standalone newline is the one exception — it stays raw, so a
+  diagnostic quoting a multi-line string literal is still split across
+  lines.
+- An escape angler does not recognise is now read the way the reference
+  compiler reads it — passed through as written — instead of failing the
+  whole file with a parse error. Runs of digits after `\` are read as
+  hexadecimal character codes, and character literals accept codepoint
+  escapes.
+
 ## [0.5.0]
 
 - New rule `leaky-top-level-use`, off by default — run it with
