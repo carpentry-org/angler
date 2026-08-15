@@ -5,6 +5,11 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+## [0.5.1]
+
+- `carp-reader` bumped to 0.4.0: a malformed `\u`, `\U` or `\x` escape in a
+  string literal no longer fails the parse, matching the reference reader,
+  so angler no longer refuses a file that `carp` compiles and runs.
 - A control byte in a string literal is now escaped in a diagnostic's
   `at:` line instead of reaching the terminal raw: `\a`, `\b`, `\t`,
   `\v`, `\f` and `\r` render as those escapes and anything else renders

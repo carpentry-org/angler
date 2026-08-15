@@ -940,10 +940,15 @@ w
       _ false)
     "skips non-array top-level forms")
   (assert-true t
-    (match (Lint.lint-source "(def s \"\\uZZZZ\")")
+    (match (Lint.lint-source "(def s \"abc")
       (Result.Error _) true
       (Result.Success _) false)
-    "surfaces a parse error for a string with an invalid escape")
+    "surfaces a parse error for an unterminated string")
+  (assert-true t
+    (match (Lint.lint-source "(def s \"\\uZZZZ\")")
+      (Result.Success _) true
+      (Result.Error _) false)
+    "a malformed escape parses, as the reference reader reads it")
   (assert-true t
     (parses? "(def s \"\\q\")")
     "an unknown escape is read as written, the way the compiler reads it")
