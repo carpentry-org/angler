@@ -5,6 +5,12 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- `carp-reader` bumped to 0.4.1: a finding on a form that follows a number
+  on the same line is now reported at that form's real column. A numeric
+  literal advanced the reader's column by one no matter how many bytes it
+  occupied, so every column printed after a number on that line was too
+  small, and an editor jumping to a finding landed short of it.
+
 ## [0.5.1]
 
 - `carp-reader` bumped to 0.4.0: a malformed `\u`, `\U` or `\x` escape in a
