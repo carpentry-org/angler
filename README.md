@@ -107,15 +107,16 @@ and an `unquote` or `unquote-splicing` anywhere in the form silences it.
 rather than run it, and their parameter lists take `:rest`.
 
 A `defn` whose body is exactly one of its own parameters is a forward
-declaration and is left alone. `(defn parse-authority [p res] res)` is a
-stub that exists so mutually recursive functions can be named before
-they are written, and the real definition comes later in the same file.
-Exempting a name that is redefined later would catch the same case more
-directly, but it needs a whole-file rule for something the node already
-announces: a function that computes nothing and hands back an argument
-unchanged is nobody's finished work. Across the 47 carpentry
-repositories that exemption suppresses the two stubs in `uri` and
-nothing else.
+declaration and is left alone; the test is the shape, so a function that
+just returns one of its arguments — `(defn snd [a b] b)` — is exempt
+too. `(defn parse-authority [p res] res)` is a stub that exists so
+mutually recursive functions can be named before they are written, and
+the real definition comes later in the same file. Exempting a name that
+is redefined later would catch the same case more directly, but it needs
+a whole-file rule for something the node already announces: a function
+that computes nothing and hands back an argument unchanged is nobody's
+finished work. Across the 47 carpentry repositories that exemption
+suppresses the two stubs in `uri` and nothing else.
 
 The rule is on by default. Over those repositories it fires 15 times
 against 3023 `defn` sites — once on a fix callback in angler's own test

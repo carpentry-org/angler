@@ -9,7 +9,8 @@ the project follows [Semantic Versioning](https://semver.org/).
   name occurs nowhere in the body. It is reported only — deleting a
   parameter would break every call site — and prefixing the name with `_`
   silences it. A stub whose body is exactly one of its own parameters is a
-  forward declaration and is left alone.
+  forward declaration and is left alone; the test is the shape, so a
+  function that just returns one of its arguments is exempt too.
 - `carp-reader` bumped to 0.4.1: a finding on a form that follows a number
   on the same line is now reported at that form's real column. A numeric
   literal advanced the reader's column by one no matter how many bytes it
