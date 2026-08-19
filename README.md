@@ -61,7 +61,8 @@ call site updated, `identical-if-branches` cannot drop a condition that
 may have side effects, `eq-self` cannot fold `(= x x)` to `true` — for a
 NaN float it is `false`, which is exactly what that idiom tests for —
 `unused-let-binding` and `shadowed-let-binding` cannot delete a binding
-whose initialiser may have some, and `unsafe-result-unwrap`,
+whose initialiser may have some, `unused-defn-parameter` would need every
+call site updated too, and `unsafe-result-unwrap`,
 `unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
 know more about the program than the linter does.
 
@@ -96,6 +97,34 @@ with `_` is exempt, one segment of a dotted symbol counts as a use, an
 odd binding vector is left alone, and an `unquote` or
 `unquote-splicing` anywhere in the form silences it. Three or more
 bindings of one name are one finding.
+
+`unused-defn-parameter` reports a `defn` or `defn-` parameter whose name
+occurs nowhere in the body. The conventions are `unused-let-binding`'s:
+the check is purely syntactic, so `set!` counts as a use and so does one
+segment of a dotted symbol, a name starting with `_` is never reported,
+and an `unquote` or `unquote-splicing` anywhere in the form silences it.
+`defndynamic` and `defmacro` are left out — their bodies build code
+rather than run it, and their parameter lists take `:rest`.
+
+A `defn` whose body is exactly one of its own parameters is a forward
+declaration and is left alone. `(defn parse-authority [p res] res)` is a
+stub that exists so mutually recursive functions can be named before
+they are written, and the real definition comes later in the same file.
+Exempting a name that is redefined later would catch the same case more
+directly, but it needs a whole-file rule for something the node already
+announces: a function that computes nothing and hands back an argument
+unchanged is nobody's finished work. Across the 47 carpentry
+repositories that exemption suppresses the two stubs in `uri` and
+nothing else.
+
+The rule is on by default. Over those repositories it fires 15 times
+against 3023 `defn` sites — once on a fix callback in angler's own test
+suite, fourteen times in `web`, where a handler takes `[req params]`
+because the router calls it that way and often needs only one of them.
+The `_` prefix is the fix in every one of those cases, and writing it is
+worth the keystrokes: that signature is also where a parameter left over
+from a signature change, or one the author meant to read and never did,
+sits unnoticed.
 
 `discarded-let-body` reports a plain `let` whose body has more than one
 form. Carp's `let` evaluates the first one and returns it; every later
