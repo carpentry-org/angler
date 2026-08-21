@@ -1517,6 +1517,80 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private defn-form-head)
+  (hidden defn-form-head)
+  (defn defn-form-head [f]
+    (cond
+      (sym? f "defn") (Maybe.Just @"defn")
+      (sym? f "defn-") (Maybe.Just @"defn-")
+      (Maybe.Nothing)))
+
+  (private forward-declaration?)
+  (hidden forward-declaration?)
+  ; a stub whose body is one of its own parameters stands in for a later
+  ; definition
+  (defn forward-declaration? [items params]
+    (and (Int.= 4 (code-count items))
+         (match (binding-name (nth-code-form items 3))
+           (Maybe.Just name) (syms-occur? params &name 0)
+           (Maybe.Nothing) false)))
+
+  (private unused-parameters)
+  (hidden unused-parameters)
+  (defn unused-parameters [items params]
+    (let-do [out (the (Array String) [])
+             n (code-count params)
+             body (code-from items 3)]
+      (for [k 0 n]
+        (match (binding-name (nth-code-form params k))
+          (Maybe.Just name)
+            (unless (or
+                (syms-occur? params &name (code-from params (Int.inc k)))
+                (syms-occur? items &name body))
+              (set! out (Array.push-back out @&name)))
+          (Maybe.Nothing) ()))
+      out))
+
+  (private unused-parameter-message)
+  (hidden unused-parameter-message)
+  (defn unused-parameter-message [head names]
+    (if (Int.= 1 (Array.length names))
+      (fmt
+        "%s parameter %s is never used; prefix it with '_' if that is deliberate"
+        head
+        &(name-list names))
+      (fmt
+        "%s parameters %s are never used; prefix them with '_' if that is deliberate"
+        head
+        &(name-list names))))
+
+  (private rule-unused-defn-parameter)
+  (hidden rule-unused-defn-parameter)
+  (defn rule-unused-defn-parameter [l]
+    (let [f (Located.form l)
+          info (Located.info l)]
+      (match-ref f
+        (Form.Lst items)
+          (if (and (Int.>= (code-count items) 4)
+                   (not (unquotes-occur? items (code-from items 1))))
+            (match (defn-form-head (nth-code-form items 0))
+              (Maybe.Just head)
+                (match-ref (nth-code-form items 2)
+                  (Form.Arr params)
+                    (if (forward-declaration? items params)
+                      (Maybe.Nothing)
+                      (let [unused (unused-parameters items params)]
+                        (if (Int.= 0 (Array.length &unused))
+                          (Maybe.Nothing)
+                          (dx info
+                              "unused-defn-parameter"
+                              &(unused-parameter-message &head &unused)
+                              (Form.str f)))))
+                  _ (Maybe.Nothing))
+              (Maybe.Nothing) (Maybe.Nothing))
+            (Maybe.Nothing))
+        _ (Maybe.Nothing))))
+
   (private rule-redundant-do-in-do-variant)
   (hidden rule-redundant-do-in-do-variant)
   (defn rule-redundant-do-in-do-variant [l]
@@ -2254,6 +2328,9 @@ rule names satisfy `keep?`.")
       (register-rule! @"shadowed-let-binding"
                       @"a let/let-do binding rebound before it is used"
                       rule-shadowed-let-binding)
+      (register-rule! @"unused-defn-parameter"
+                      @"a defn/defn- parameter that the body never mentions"
+                      rule-unused-defn-parameter)
       (register-rule! @"discarded-let-body"
                       @"a let whose body has more than one form; only the first runs"
                       rule-discarded-let-body)

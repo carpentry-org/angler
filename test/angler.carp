@@ -56,7 +56,7 @@
                        @(Info.col (Located.info l))))
     (Maybe.Nothing)))
 
-(defn fix-zap [l src]
+(defn fix-zap [l _src]
   (Maybe.Just
     (Fix.init @(Info.pos (Located.info l)) @(Info.pos (Located.end l)) @"ZAPPED")))
 
@@ -567,6 +567,74 @@
     "the message names the head form")
 
   (assert-true t
+    (has-rule? "(defn f [a b] (foo b))" "unused-defn-parameter")
+    "unused-defn-parameter fires on a parameter the body never mentions")
+  (assert-true t
+    (has-rule? "(defn- g [x] 1)" "unused-defn-parameter")
+    "unused-defn-parameter fires on defn-")
+  (assert-false t
+    (has-rule? "(defn f [a] (+ a 1))" "unused-defn-parameter")
+    "unused-defn-parameter does not fire when the body uses the parameter")
+  (assert-false t
+    (has-rule? "(defn f [a b] (set! a 1) b)" "unused-defn-parameter")
+    "set! counts as a use of a parameter")
+  (assert-false t
+    (has-rule? "(defn f [a] (Foo.a))" "unused-defn-parameter")
+    "a dotted symbol segment counts as a use of a parameter")
+  (assert-false t
+    (has-rule? "(defn f [_ b] (foo b))" "unused-defn-parameter")
+    "an underscore parameter is not reported")
+  (assert-false t
+    (has-rule? "(defn f [_req b] (foo b))" "unused-defn-parameter")
+    "an underscore-prefixed parameter is not reported")
+  (assert-false t
+    (has-rule? "(defn parse-authority [p res] res)" "unused-defn-parameter")
+    "a body that is exactly one parameter is a forward declaration")
+  (assert-true t
+    (has-rule? "(defn f [a b] (do b))" "unused-defn-parameter")
+    "a one-form body that is not a bare parameter is still checked")
+  (assert-false t
+    (has-rule? "(defn f [a])" "unused-defn-parameter")
+    "a defn with no body is left alone")
+  (assert-false t
+    (has-rule? "(defn f a b)" "unused-defn-parameter")
+    "a defn without a parameter vector is left alone")
+  (assert-false t
+    (has-rule? "(defndynamic d [a b] (foo b))" "unused-defn-parameter")
+    "defndynamic is not checked")
+  (assert-false t
+    (has-rule? "(defmacro m [a b] (foo b))" "unused-defn-parameter")
+    "defmacro is not checked")
+  (assert-false t
+    (has-rule? "'(defn f [a b] (foo b))" "unused-defn-parameter")
+    "a quoted defn is data and is not reported")
+  (assert-false t
+    (has-rule? "(defmacro m [body] `(defn f [a] %body))" "unused-defn-parameter")
+    "an unquote in the body silences the defn")
+  (assert-false t
+    (has-rule? "(defmacro m [] `(defn f [a] (foo a)))" "unused-defn-parameter")
+    "a name inside a quasiquote counts as a use")
+  (assert-true t (has-rule? "(defn f [a ; note
+ b] (foo b))" "unused-defn-parameter") "a comment in the parameter vector does not hide an unused parameter")
+  (assert-false t (has-rule? "(defn f [a ; note
+ b] (+ a b))" "unused-defn-parameter") "a comment in the parameter vector does not hide a use")
+  (assert-equal t
+    1
+    (count-rule "(defn f [a b] 0)" "unused-defn-parameter")
+    "several unused parameters in one defn are one finding")
+  (assert-true t
+    (String.contains-string? &(lint-output "(defn f [a b] 0)")
+                             "defn parameters 'a', 'b' are never used")
+    "the message names every unused parameter")
+  (assert-true t
+    (String.contains-string? &(lint-output "(defn- g [x] 1)")
+                             "defn- parameter 'x' is never used")
+    "the message names the head form")
+  (assert-false t
+    (Lint.fixable? "unused-defn-parameter")
+    "unused-defn-parameter is deliberately not fixable")
+
+  (assert-true t
     (has-rule? "(let [x 1 x 2] x)" "shadowed-let-binding")
     "shadowed-let-binding fires when the shadowed binding is never used")
   (assert-true t
@@ -715,9 +783,9 @@
   (assert-equal t "(use Foo)" &(fix! "(use Foo)") "a file rule has no rewrite")
 
   (assert-equal t
-    38
+    39
     (Array.length &(Lint.list-rules))
-    "35 built-ins + 3 top-level-registered test rules = 38")
+    "36 built-ins + 3 top-level-registered test rules = 39")
 
   (assert-equal t
     0
@@ -738,9 +806,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    38
+    39
     (Array.length &(Lint.list-rules))
-    "after top-level register, 38 rules total")
+    "after top-level register, 39 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -957,9 +1025,9 @@ w
   (assert-equal t "1:1: [lonely-do] (do x) is just x
   at: (do \"\\u0001\")" &(lint-output "(do \"\\u0001\")") "an unnamed control byte reaches the diagnostic as \\uXXXX")
   (assert-equal t
-    40
+    41
     (Array.length &(Lint.list-rules))
-    "38 previous + 2 loaded from source = 40")
+    "39 previous + 2 loaded from source = 41")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -1432,9 +1500,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    41
+    42
     (Array.length &(Lint.list-rules))
-    "40 previous + 1 loaded with a template = 41")
+    "41 previous + 1 loaded with a template = 42")
 
   (assert-true t
     (match (Lint.load-rules-from-source!
