@@ -1347,15 +1347,22 @@ skipped. Returns the number of rules loaded, or a parse error.")
         (set! i (Int.inc i)))
       found))
 
+  (private discard-name?)
+  (hidden discard-name?)
+  ; a leading `-` marks a deliberate discard; `_` still counts, for code
+  ; written before that spelling
+  (defn discard-name? [s]
+    (or (starts-with-bytes? s "-") (starts-with-bytes? s "_")))
+
   (private binding-name)
   (hidden binding-name)
-  ; an underscore name is a deliberate discard
+  ; the name a binding or parameter form binds, or Nothing for a discard
   (defn binding-name [f]
     (match-ref f
       (Form.Sym segs)
         (if (Int.= 1 (Array.length segs))
           (let [s (Array.unsafe-nth segs 0)]
-            (if (starts-with-bytes? s "_") (Maybe.Nothing) (Maybe.Just @s)))
+            (if (discard-name? s) (Maybe.Nothing) (Maybe.Just @s)))
           (Maybe.Nothing))
       _ (Maybe.Nothing)))
 
@@ -1556,11 +1563,11 @@ skipped. Returns the number of rules loaded, or a parse error.")
   (defn unused-parameter-message [head names]
     (if (Int.= 1 (Array.length names))
       (fmt
-        "%s parameter %s is never used; prefix it with '_' if that is deliberate"
+        "%s parameter %s is never used; prefix it with '-' if that is deliberate"
         head
         &(name-list names))
       (fmt
-        "%s parameters %s are never used; prefix them with '_' if that is deliberate"
+        "%s parameters %s are never used; prefix them with '-' if that is deliberate"
         head
         &(name-list names))))
 

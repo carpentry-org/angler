@@ -77,7 +77,8 @@ body. The check is purely syntactic, which keeps it right in places a
 scope-accurate one would go wrong: `set!` counts as a use, so does a
 name that only appears inside a quasiquote or a macro body, and so does
 one segment of a dotted symbol — `Foo.x` keeps `x` alive. Bindings
-whose name starts with `_` are never reported, and a binding vector
+whose name starts with `-` are never reported (`_` counts too, for
+code written before that spelling), and a binding vector
 with an odd number of entries is left alone. Neither is shadowing:
 in `(let [x 1 x 2] x)` the second `x` is an occurrence of the name, so
 the rule stays quiet. A `let` whose binding vector or body contains an
@@ -93,7 +94,7 @@ the first binding, which is a deliberate pipeline rather than a
 mistake. Any occurrence of the name between the two bindings keeps the
 earlier one alive, including one in the shadowing initialiser itself.
 The conventions are the ones `unused-let-binding` uses: a name starting
-with `_` is exempt, one segment of a dotted symbol counts as a use, an
+with `-` is exempt, one segment of a dotted symbol counts as a use, an
 odd binding vector is left alone, and an `unquote` or
 `unquote-splicing` anywhere in the form silences it. Three or more
 bindings of one name are one finding.
@@ -101,7 +102,7 @@ bindings of one name are one finding.
 `unused-defn-parameter` reports a `defn` or `defn-` parameter whose name
 occurs nowhere in the body. The conventions are `unused-let-binding`'s:
 the check is purely syntactic, so `set!` counts as a use and so does one
-segment of a dotted symbol, a name starting with `_` is never reported,
+segment of a dotted symbol, a name starting with `-` is never reported,
 and an `unquote` or `unquote-splicing` anywhere in the form silences it.
 `defndynamic` and `defmacro` are left out — their bodies build code
 rather than run it, and their parameter lists take `:rest`.

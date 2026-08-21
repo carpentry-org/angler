@@ -5,9 +5,13 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- The deliberate-discard marker for `unused-let-binding`,
+  `shadowed-let-binding` and `unused-defn-parameter` is a leading `-`
+  rather than a leading `_`. A leading `_` is still honoured, so nothing
+  written against the old spelling starts reporting.
 - New rule `unused-defn-parameter`: a `defn` or `defn-` parameter whose
   name occurs nowhere in the body. It is reported only — deleting a
-  parameter would break every call site — and prefixing the name with `_`
+  parameter would break every call site — and prefixing the name with `-`
   silences it. A stub whose body is exactly one of its own parameters is a
   forward declaration and is left alone; the test is the shape, so a
   function that just returns one of its arguments is exempt too.

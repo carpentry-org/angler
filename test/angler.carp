@@ -507,6 +507,9 @@
     (has-rule? "(let [_tmp (side-effect)] 0)" "unused-let-binding")
     "an underscore-prefixed binding is not reported")
   (assert-false t
+    (has-rule? "(let [-tmp (side-effect)] 0)" "unused-let-binding")
+    "a dash-prefixed binding is not reported")
+  (assert-false t
     (has-rule? "(let [x 1 y] x)" "unused-let-binding")
     "an odd binding vector is left alone")
   (assert-false t
@@ -587,6 +590,12 @@
   (assert-false t
     (has-rule? "(defn f [_req b] (foo b))" "unused-defn-parameter")
     "an underscore-prefixed parameter is not reported")
+  (assert-false t
+    (has-rule? "(defn f [-req b] (foo b))" "unused-defn-parameter")
+    "a dash-prefixed parameter is not reported")
+  (assert-false t
+    (has-rule? "(defn len [-v] 0)" "unused-defn-parameter")
+    "an interface implementation marks its unused parameter with a dash")
   (assert-false t
     (has-rule? "(defn parse-authority [p res] res)" "unused-defn-parameter")
     "a body that is exactly one parameter is a forward declaration")
