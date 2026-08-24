@@ -629,6 +629,28 @@
       "(let [i (String.index-of s \\=)] (String.slice s i (String.index-of s \\-)))"
       "byte-offset-as-char-index")
     "a sink reachable both directly and through a binding is one finding")
+  (assert-equal t
+    2
+    (count-rule
+      "(let [i (String.index-of s \\=)] (String.prefix (String.suffix s i) i))"
+      "byte-offset-as-char-index")
+    "a sink nested inside a reported sink is reported too")
+  (assert-equal t
+    2
+    (count-rule
+      "(let [i (String.index-of s \\=)] (String.prefix (String.slice s i (String.index-of s \\-)) i))"
+      "byte-offset-as-char-index")
+    "a nested sink reachable both ways is still one finding each")
+  (assert-true t
+    (has-rule?
+      "(String.prefix s (String.length \"ä\"))"
+      "byte-offset-as-char-index")
+    "a literal that is not all ASCII counts more bytes than characters")
+  (assert-true t
+    (has-rule?
+      "(String.suffix s (Int.+ i (String.length \"prefix:\")))"
+      "byte-offset-as-char-index")
+    "a literal length added to an offset of unknown provenance still fires")
 
   (assert-false t
     (has-rule?
@@ -640,6 +662,16 @@
       "(if (= \\. (String.char-at s 0)) (String.suffix s 1) @s)"
       "byte-offset-as-char-index")
     "a literal count is not a byte offset")
+  (assert-false t
+    (has-rule?
+      "(String.prefix s (Int.+ 1 (String.length \"ab\")))"
+      "byte-offset-as-char-index")
+    "a constant written the long way is not a byte offset either")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length \"ab\")] (String.prefix s n))"
+      "byte-offset-as-char-index")
+    "an ASCII literal's length is a constant however it reaches the call")
   (assert-false t
     (has-rule? "(String.chars s)" "byte-offset-as-char-index")
     "a call with no index at all is left alone")

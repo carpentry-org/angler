@@ -1638,6 +1638,39 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (arith-name? (Array.unsafe-nth segs (Int.dec n)))))
       _ false))
 
+  (private ascii-str?)
+  (hidden ascii-str?)
+  (defn ascii-str? [f]
+    (match-ref f
+      (Form.Str s)
+        (let-do [ok true]
+          (for [i 0 (String.length s)]
+            (when (Int.> (Char.to-int (String.char-at s i)) 127) (set! ok false)))
+          ok)
+      _ false))
+
+  (private const-count?)
+  (hidden const-count?)
+  ; an ASCII literal counts the same in both spaces, so its length is constant
+  (defn const-count? [f]
+    (match-ref f
+      (Form.Itg _) true
+      (Form.Lst items)
+        (let [n (code-count items)]
+          (and (Int.> n 0)
+               (let [h (nth-code-form items 0)]
+                 (if (and (Int.= 2 n) (sym? h "String.length"))
+                   (ascii-str? (nth-code-form items 1))
+                   (and (arith-head? h)
+                        (let-do [ok (Int.> n 1)
+                                 i 1]
+                          (while-do (and ok (Int.< i n))
+                            (unless (const-count? (nth-code-form items i))
+                              (set! ok false))
+                            (set! i (Int.inc i)))
+                          ok))))))
+      _ false))
+
   (private byte-offset-call?)
   (hidden byte-offset-call?)
   (defn byte-offset-call? [f]
@@ -1715,7 +1748,7 @@ skipped. Returns the number of rules loaded, or a parse error.")
                  i 2]
           (while-do (and (Maybe.nothing? &found) (Int.< i n))
             (let [a (nth-code-form items i)]
-              (when (byte-offset-call? a)
+              (when (and (byte-offset-call? a) (not (const-count? a)))
                 (set! found
                       (Maybe.Just
                         (mixed-index-message &sink &(byte-offset-source a))))))
@@ -1794,23 +1827,19 @@ skipped. Returns the number of rules loaded, or a parse error.")
         (let [l (nth-located items i)]
           (match-ref (Located.form l)
             (Form.Lst kids)
-              (unless (or (data-list? kids) (dynamic-form? kids))
-                (let-do [reported false]
-                  (match (char-sink kids)
-                    (Maybe.Just sink)
-                      (when-do (indexes-with? kids name)
-                        (set! reported true)
-                        (set! acc
-                              (push-maybe! acc
-                                           (dx (Located.info l)
-                                               "byte-offset-as-char-index"
-                                               &(mixed-index-message &sink
-                                                                     source)
-                                               (Form.str (Located.form l))))))
-                    (Maybe.Nothing) ())
-                  (unless (or reported (rebinds? kids name))
-                    (set! acc
-                          (extend! acc (mixed-index-uses kids name source 0))))))
+              (unless-do (or (data-list? kids) (dynamic-form? kids))
+                (match (char-sink kids)
+                  (Maybe.Just sink)
+                    (when (indexes-with? kids name)
+                      (set! acc
+                            (push-maybe! acc
+                                         (dx (Located.info l)
+                                             "byte-offset-as-char-index"
+                                             &(mixed-index-message &sink source)
+                                             (Form.str (Located.form l))))))
+                  (Maybe.Nothing) ())
+                (unless (rebinds? kids name)
+                  (set! acc (extend! acc (mixed-index-uses kids name source 0)))))
             (Form.Arr kids)
               (set! acc (extend! acc (mixed-index-uses kids name source 0)))
             (Form.StaticArr kids)
@@ -1830,7 +1859,7 @@ skipped. Returns the number of rules loaded, or a parse error.")
       (while-do (Int.< k pairs)
         (let [ni (Int.* 2 k)
               init (nth-code-form bindings (Int.inc ni))]
-          (when (byte-offset-call? init)
+          (when (and (byte-offset-call? init) (not (const-count? init)))
             (match (binding-name (nth-code-form bindings ni))
               (Maybe.Just name)
                 (let-do [source (byte-offset-source init)]

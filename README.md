@@ -162,11 +162,11 @@ three byte-answering functions, a name the enclosing `let` or `let-do`
 bound to one, or either of those with integer arithmetic applied —
 `(String.prefix s (Int.dec i))` cuts in the same wrong space as
 `(String.prefix s i)`. Every offending call under a binding is
-reported, not just the first. A name rebound by an inner `let` no
-longer carries the offset. The fix is usually
-`String.byte-slice`, which matches the index to the cut, so the rule is
-reported only — sometimes the answer is to redesign the scan in one
-space or the other.
+reported, not just the first, including one nested inside another. A
+name rebound by an inner `let` no longer carries the offset. The fix
+is usually `String.byte-slice`, which matches the index to the cut, so
+the rule is reported only — sometimes the answer is to redesign the
+scan in one space or the other.
 
 An offset from `Pattern.find` is deliberately not reported. It is a
 byte offset too, but a pattern that can only match ASCII makes the byte
@@ -175,6 +175,13 @@ look like — `semver.carp:25` is one, and reporting it would turn a
 green repository red for no defect. The boundary is the design: the
 rule reports the sources that are wrong whatever the pattern, and
 leaves the one whose safety depends on it.
+
+`String.length` of an all-ASCII string literal is left alone on the
+same reasoning: its byte count and its character count are the same
+number, so `(String.prefix s (Int.+ 1 (String.length "ab")))` is a
+constant written the long way. Only the constant is exempt — a literal
+with a non-ASCII byte in it, and a literal length added to an offset
+the rule cannot see the provenance of, are both still reported.
 
 `defndynamic` and `defmacro` bodies are left out. They run in the
 compiler, where `String.prefix` and `String.index-of` are dynamic

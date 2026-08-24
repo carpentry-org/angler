@@ -15,7 +15,9 @@ the project follows [Semantic Versioning](https://semver.org/).
   only; the fix is usually `String.byte-slice`, and sometimes a redesign.
   Only the `String.`-qualified spelling is matched, because `Array` has
   same-arity counterparts for all six names. An offset from
-  `Pattern.find` is deliberately not reported.
+  `Pattern.find` is deliberately not reported, and neither is a count
+  that is constant by construction, such as `String.length` of an
+  all-ASCII string literal.
 - The deliberate-discard marker for `unused-let-binding`,
   `shadowed-let-binding` and `unused-defn-parameter` is a leading `-`
   rather than a leading `_`. A leading `_` is still honoured, so nothing
