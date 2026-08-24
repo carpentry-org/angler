@@ -156,13 +156,14 @@ array. Feed an offset from the first group into the second and the
 slice lands in the wrong place as soon as one non-ASCII character
 precedes it; run the offset past the character count and
 `Array.slice`'s `unsafe-nth` aborts the process. The rule fires on the
-count argument of `prefix` and `suffix` and on either index of `slice`,
-when that argument is a call to one of the three byte-answering
-functions or a name the enclosing `let` or `let-do` bound to one. Both
-the `String.`-qualified and the bare spelling a `use String` brings in
-are matched, on the sink and on the source; a bare `length` is not,
-because `Array.length` counts elements. A name rebound by an inner
-`let` no longer carries the offset. The fix is usually
+count argument of `String.prefix` and `String.suffix` and on either
+index of `String.slice`, when that argument is a call to one of the
+three byte-answering functions, a name the enclosing `let` or `let-do`
+bound to one, or either of those with integer arithmetic applied —
+`(String.prefix s (Int.dec i))` cuts in the same wrong space as
+`(String.prefix s i)`. Every offending call under a binding is
+reported, not just the first. A name rebound by an inner `let` no
+longer carries the offset. The fix is usually
 `String.byte-slice`, which matches the index to the cut, so the rule is
 reported only — sometimes the answer is to redesign the scan in one
 space or the other.
@@ -179,6 +180,13 @@ leaves the one whose safety depends on it.
 compiler, where `String.prefix` and `String.index-of` are dynamic
 builtins over the evaluator's own strings rather than the core
 functions this rule is about.
+
+Only the `String.`-qualified spelling is matched, on the sink and on
+the source. `Array` has `length`, `index-of`, `prefix`, `suffix` and
+`slice` at the same arities, so a bare name in a `use Array` file would
+be reported under a `String.` name it never called — and a finding that
+names the wrong function is worse than one that misses the `use String`
+call site.
 
 `leaky-top-level-use` is off by default; run it with `--only
 leaky-top-level-use`. It reports a `use` or `use-all` written at a

@@ -599,14 +599,36 @@
     "the use is found however deep in the body it sits")
   (assert-true t
     (has-rule?
-      "(let [i (index-of p \\.)] (prefix p i))"
+      "(String.prefix s (Int.dec (String.index-of s \\%)))"
       "byte-offset-as-char-index")
-    "the bare names a use String brings in are matched too")
+    "an offset that has been adjusted arithmetically is still a byte offset")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (String.slice s 0 (Int.+ i 1)))"
+      "byte-offset-as-char-index")
+    "the arithmetic may sit between the binding and the call")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (String.prefix s (dec i)))"
+      "byte-offset-as-char-index")
+    "the bare arithmetic spellings count too")
   (assert-equal t
     2
     (count-rule "(defn f [s] (String.prefix s (String.length s)))
 (defn g [s] (String.suffix s (String.length s)))" "byte-offset-as-char-index")
     "every offending site in a file is reported")
+  (assert-equal t
+    2
+    (count-rule
+      "(defn f [s] (let [i (String.index-of s \\=)] (do (g (String.prefix s i)) (g (String.suffix s i)))))"
+      "byte-offset-as-char-index")
+    "every sink fed by one binding is reported, not just the first")
+  (assert-equal t
+    1
+    (count-rule
+      "(let [i (String.index-of s \\=)] (String.slice s i (String.index-of s \\-)))"
+      "byte-offset-as-char-index")
+    "a sink reachable both directly and through a binding is one finding")
 
   (assert-false t
     (has-rule?
@@ -634,6 +656,26 @@
   (assert-false t
     (has-rule? "(String.prefix s (Array.length xs))" "byte-offset-as-char-index")
     "a bare length is not assumed to be String.length")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length s)] (prefix bytes n))"
+      "byte-offset-as-char-index")
+    "a bare prefix is not assumed to be String.prefix; Array has one at the same arity")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length s)] (slice xs 0 n))"
+      "byte-offset-as-char-index")
+    "a bare slice is not assumed to be String.slice either")
+  (assert-false t
+    (has-rule?
+      "(let [i (index-of xs 3)] (String.prefix s i))"
+      "byte-offset-as-char-index")
+    "a bare index-of is not assumed to be String.index-of")
+  (assert-false t
+    (has-rule?
+      "(String.prefix s (Int.dec (Array.length (String.chars s))))"
+      "byte-offset-as-char-index")
+    "arithmetic on a character count stays a character count")
   (assert-false t
     (has-rule?
       "(defndynamic f [s] (String.prefix s (String.index-of s \\-)))"
