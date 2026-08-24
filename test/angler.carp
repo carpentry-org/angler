@@ -570,6 +570,92 @@
     "the message names the head form")
 
   (assert-true t
+    (has-rule?
+      "(String.prefix s (String.index-of s \\%))"
+      "byte-offset-as-char-index")
+    "byte-offset-as-char-index fires on index-of feeding prefix")
+  (assert-true t
+    (has-rule? "(String.suffix s (String.length s))" "byte-offset-as-char-index")
+    "byte-offset-as-char-index fires on length feeding suffix")
+  (assert-true t
+    (has-rule?
+      "(String.slice s 0 (String.index-of-string s \"x\"))"
+      "byte-offset-as-char-index")
+    "byte-offset-as-char-index fires on the second index of slice")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (String.prefix s i))"
+      "byte-offset-as-char-index")
+    "a let binding carries the byte offset to the call site")
+  (assert-true t
+    (has-rule?
+      "(let-do [i (String.index-of s \\%)] (f) (String.suffix s i))"
+      "byte-offset-as-char-index")
+    "let-do binds the same way")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (g (h (String.prefix s i))))"
+      "byte-offset-as-char-index")
+    "the use is found however deep in the body it sits")
+  (assert-true t
+    (has-rule?
+      "(let [i (index-of p \\.)] (prefix p i))"
+      "byte-offset-as-char-index")
+    "the bare names a use String brings in are matched too")
+  (assert-equal t
+    2
+    (count-rule "(defn f [s] (String.prefix s (String.length s)))
+(defn g [s] (String.suffix s (String.length s)))" "byte-offset-as-char-index")
+    "every offending site in a file is reported")
+
+  (assert-false t
+    (has-rule?
+      "(let [i (Pattern.find pat p)] (String.prefix p i))"
+      "byte-offset-as-char-index")
+    "a Pattern.find offset is left alone; an ASCII-only pattern makes the two spaces coincide")
+  (assert-false t
+    (has-rule?
+      "(if (= \\. (String.char-at s 0)) (String.suffix s 1) @s)"
+      "byte-offset-as-char-index")
+    "a literal count is not a byte offset")
+  (assert-false t
+    (has-rule? "(String.chars s)" "byte-offset-as-char-index")
+    "a call with no index at all is left alone")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length s)] (String.byte-slice s 0 n))"
+      "byte-offset-as-char-index")
+    "a byte-space-only loop is correct however much it resembles the bug")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (Array.prefix xs i))"
+      "byte-offset-as-char-index")
+    "only String's character-counting calls are sinks")
+  (assert-false t
+    (has-rule? "(String.prefix s (Array.length xs))" "byte-offset-as-char-index")
+    "a bare length is not assumed to be String.length")
+  (assert-false t
+    (has-rule?
+      "(defndynamic f [s] (String.prefix s (String.index-of s \\-)))"
+      "byte-offset-as-char-index")
+    "a defndynamic body runs in the compiler, where these are dynamic builtins")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [s] (String.prefix s (String.index-of s \\-)))"
+      "byte-offset-as-char-index")
+    "a defmacro body is dynamic too")
+  (assert-false t
+    (has-rule?
+      "'(String.prefix s (String.index-of s \\%))"
+      "byte-offset-as-char-index")
+    "a quoted call is data and is not reported")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (let [i 0] (String.prefix s i)))"
+      "byte-offset-as-char-index")
+    "a rebound name no longer carries the byte offset")
+
+  (assert-true t
     (has-rule? "(defn f [a b] (foo b))" "unused-defn-parameter")
     "unused-defn-parameter fires on a parameter the body never mentions")
   (assert-true t
@@ -792,9 +878,9 @@
   (assert-equal t "(use Foo)" &(fix! "(use Foo)") "a file rule has no rewrite")
 
   (assert-equal t
-    39
+    40
     (Array.length &(Lint.list-rules))
-    "36 built-ins + 3 top-level-registered test rules = 39")
+    "37 built-ins + 3 top-level-registered test rules = 40")
 
   (assert-equal t
     0
@@ -815,9 +901,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    39
+    40
     (Array.length &(Lint.list-rules))
-    "after top-level register, 39 rules total")
+    "after top-level register, 40 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -1034,9 +1120,9 @@ w
   (assert-equal t "1:1: [lonely-do] (do x) is just x
   at: (do \"\\u0001\")" &(lint-output "(do \"\\u0001\")") "an unnamed control byte reaches the diagnostic as \\uXXXX")
   (assert-equal t
-    41
+    42
     (Array.length &(Lint.list-rules))
-    "39 previous + 2 loaded from source = 41")
+    "40 previous + 2 loaded from source = 42")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -1509,9 +1595,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    42
+    43
     (Array.length &(Lint.list-rules))
-    "41 previous + 1 loaded with a template = 42")
+    "42 previous + 1 loaded with a template = 43")
 
   (assert-true t
     (match (Lint.load-rules-from-source!

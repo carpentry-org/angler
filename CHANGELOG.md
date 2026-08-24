@@ -5,6 +5,15 @@ the project follows [Semantic Versioning](https://semver.org/).
 
 ## Unreleased
 
+- New rule `byte-offset-as-char-index`: a byte offset from
+  `String.length`, `String.index-of` or `String.index-of-string` passed
+  where `String.prefix`, `String.suffix` or `String.slice` wants a
+  character index, either directly or through a `let` binding. Mixing the
+  two index spaces returns the wrong text as soon as one non-ASCII
+  character precedes the offset, and an offset past the character count
+  aborts the process. It is reported only; the fix is usually
+  `String.byte-slice`, and sometimes a redesign. An offset from
+  `Pattern.find` is deliberately not reported.
 - The deliberate-discard marker for `unused-let-binding`,
   `shadowed-let-binding` and `unused-defn-parameter` is a leading `-`
   rather than a leading `_`. A leading `_` is still honoured, so nothing

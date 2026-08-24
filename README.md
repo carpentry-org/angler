@@ -62,7 +62,8 @@ may have side effects, `eq-self` cannot fold `(= x x)` to `true` — for a
 NaN float it is `false`, which is exactly what that idiom tests for —
 `unused-let-binding` and `shadowed-let-binding` cannot delete a binding
 whose initialiser may have some, `unused-defn-parameter` would need every
-call site updated too, and `unsafe-result-unwrap`,
+call site updated too, `byte-offset-as-char-index` has no
+unconditionally correct rewrite, and `unsafe-result-unwrap`,
 `unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
 know more about the program than the linter does.
 
@@ -145,6 +146,39 @@ forms `let` never looked at and wants the non-final ones to be `()` —
 a loud failure in place of a silent one. Comments are counted as
 comments, not body forms, so `(let [x 1] (f x) ; note` stays quiet,
 and `let-do` is never reported.
+
+`byte-offset-as-char-index` reports a byte offset used where a
+character index is expected. Core's `String` mixes two index spaces:
+`String.length` is `strlen` and `String.index-of` and
+`String.index-of-string` answer in bytes, while `String.prefix`,
+`String.suffix` and `String.slice` index the UTF-8-decoded character
+array. Feed an offset from the first group into the second and the
+slice lands in the wrong place as soon as one non-ASCII character
+precedes it; run the offset past the character count and
+`Array.slice`'s `unsafe-nth` aborts the process. The rule fires on the
+count argument of `prefix` and `suffix` and on either index of `slice`,
+when that argument is a call to one of the three byte-answering
+functions or a name the enclosing `let` or `let-do` bound to one. Both
+the `String.`-qualified and the bare spelling a `use String` brings in
+are matched, on the sink and on the source; a bare `length` is not,
+because `Array.length` counts elements. A name rebound by an inner
+`let` no longer carries the offset. The fix is usually
+`String.byte-slice`, which matches the index to the cut, so the rule is
+reported only — sometimes the answer is to redesign the scan in one
+space or the other.
+
+An offset from `Pattern.find` is deliberately not reported. It is a
+byte offset too, but a pattern that can only match ASCII makes the byte
+and character offsets coincide, and that is what the calls in the wild
+look like — `semver.carp:25` is one, and reporting it would turn a
+green repository red for no defect. The boundary is the design: the
+rule reports the sources that are wrong whatever the pattern, and
+leaves the one whose safety depends on it.
+
+`defndynamic` and `defmacro` bodies are left out. They run in the
+compiler, where `String.prefix` and `String.index-of` are dynamic
+builtins over the evaluator's own strings rather than the core
+functions this rule is about.
 
 `leaky-top-level-use` is off by default; run it with `--only
 leaky-top-level-use`. It reports a `use` or `use-all` written at a
