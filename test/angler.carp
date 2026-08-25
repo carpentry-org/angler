@@ -728,6 +728,42 @@
       "(let [i (String.index-of s \\%)] (let [i 0] (String.prefix s i)))"
       "byte-offset-as-char-index")
     "a rebound name no longer carries the byte offset")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let [head (String.prefix s i) i 0] head))"
+      "byte-offset-as-char-index")
+    "a sink before the rebinding pair still reads the outer offset")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let-do [head (String.prefix s i) i 0] head))"
+      "byte-offset-as-char-index")
+    "let-do rebinds in sequence the same way")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let [i (String.prefix s i)] i))"
+      "byte-offset-as-char-index")
+    "the rebinding pair's own initialiser still reads the outer offset")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let [i 0 head (String.prefix s i)] head))"
+      "byte-offset-as-char-index")
+    "a sink after the rebinding pair reads the new name")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=) head (String.prefix s i)] head)"
+      "byte-offset-as-char-index")
+    "a later binding in the same vector carries the byte offset")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\=) i 0 head (String.prefix s i)] head)"
+      "byte-offset-as-char-index")
+    "a sibling that rebinds the name ends its reach in the same vector")
+  (assert-equal t
+    1
+    (count-rule
+      "(let [eq (String.index-of p \\=)] (let [k (String.prefix p eq) eq (Int.inc eq) v (String.suffix p eq)] (String.append &k &v)))"
+      "byte-offset-as-char-index")
+    "advancing by rebinding reports the sink before it, not the one after")
 
   (assert-true t
     (has-rule? "(defn f [a b] (foo b))" "unused-defn-parameter")

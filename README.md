@@ -162,9 +162,14 @@ three byte-answering functions, a name the enclosing `let` or `let-do`
 bound to one, or either of those with integer arithmetic applied —
 `(String.prefix s (Int.dec i))` cuts in the same wrong space as
 `(String.prefix s i)`. Every offending call under a binding is
-reported, not just the first, including one nested inside another. A
-name rebound by an inner `let` no longer carries the offset. The fix
-is usually `String.byte-slice`, which matches the index to the cut, so
+reported, not just the first, including one nested inside another.
+`let` binds in sequence, so a rebinding of the name ends its reach at
+that pair: an initialiser earlier in the same vector, and the
+rebinding pair's own initialiser, still read the outer name, while the
+rest of the vector and the body do not. What the rebinding itself
+carries is not followed — `(let [i (Int.inc i)] (String.prefix s i))`
+is silent even though the new `i` is the old offset. The fix is
+usually `String.byte-slice`, which matches the index to the cut, so
 the rule is reported only — sometimes the answer is to redesign the
 scan in one space or the other.
 

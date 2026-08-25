@@ -1816,13 +1816,29 @@ skipped. Returns the number of rules loaded, or a parse error.")
                  hit)
              _ false))))
 
+  (private rebind-cut)
+  (hidden rebind-cut)
+  ; raw index one past the pair that rebinds `name` at or after `k`, or the end
+  (defn rebind-cut [bindings name k]
+    (let-do [at -1
+             pairs (Int./ (code-count bindings) 2)
+             j k]
+      (while-do (and (Int.< at 0) (Int.< j pairs))
+        (let [ni (Int.* 2 j)]
+          (match (binding-name (nth-code-form bindings ni))
+            (Maybe.Just other)
+              (when (= &other name) (set! at (code-from bindings (Int.+ ni 2))))
+            (Maybe.Nothing) ()))
+        (set! j (Int.inc j)))
+      (if (Int.< at 0) (Array.length bindings) at)))
+
   (private mixed-index-uses)
   (hidden mixed-index-uses)
   ; every character-counting call under `items` indexed with `name`
-  (defn mixed-index-uses [items name source from]
+  (defn mixed-index-uses [items name source from to]
     (let-do [acc (the (Array Diagnostic) [])
              i from
-             n (Array.length items)]
+             n (if (Int.< to 0) (Array.length items) to)]
       (while-do (Int.< i n)
         (let [l (nth-located items i)]
           (match-ref (Located.form l)
@@ -1838,14 +1854,25 @@ skipped. Returns the number of rules loaded, or a parse error.")
                                              &(mixed-index-message &sink source)
                                              (Form.str (Located.form l))))))
                   (Maybe.Nothing) ())
-                (unless (rebinds? kids name)
-                  (set! acc (extend! acc (mixed-index-uses kids name source 0)))))
+                (if (rebinds? kids name)
+                  (match-ref (nth-code-form kids 1)
+                    (Form.Arr bs)
+                      (set! acc
+                            (extend! acc
+                                     (mixed-index-uses bs
+                                                       name
+                                                       source
+                                                       0
+                                                       (rebind-cut bs name 0))))
+                    _ ())
+                  (set! acc
+                        (extend! acc (mixed-index-uses kids name source 0 -1)))))
             (Form.Arr kids)
-              (set! acc (extend! acc (mixed-index-uses kids name source 0)))
+              (set! acc (extend! acc (mixed-index-uses kids name source 0 -1)))
             (Form.StaticArr kids)
-              (set! acc (extend! acc (mixed-index-uses kids name source 0)))
+              (set! acc (extend! acc (mixed-index-uses kids name source 0 -1)))
             (Form.Dict kids)
-              (set! acc (extend! acc (mixed-index-uses kids name source 0)))
+              (set! acc (extend! acc (mixed-index-uses kids name source 0 -1)))
             _ ()))
         (set! i (Int.inc i)))
       acc))
@@ -1869,13 +1896,17 @@ skipped. Returns the number of rules loaded, or a parse error.")
                                                    &name
                                                    &source
                                                    (code-from bindings
-                                                              (Int.+ ni 2)))))
+                                                              (Int.+ ni 2))
+                                                   (rebind-cut bindings
+                                                               &name
+                                                               (Int.inc k)))))
                   (set! acc
                         (extend! acc
                                  (mixed-index-uses items
                                                    &name
                                                    &source
-                                                   (code-from items 2)))))
+                                                   (code-from items 2)
+                                                   -1))))
               (Maybe.Nothing) ())))
         (set! k (Int.inc k)))
       acc))
