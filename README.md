@@ -62,7 +62,8 @@ may have side effects, `eq-self` cannot fold `(= x x)` to `true` — for a
 NaN float it is `false`, which is exactly what that idiom tests for —
 `unused-let-binding` and `shadowed-let-binding` cannot delete a binding
 whose initialiser may have some, `unused-defn-parameter` would need every
-call site updated too, and `unsafe-result-unwrap`,
+call site updated too, `byte-offset-as-char-index` has no
+unconditionally correct rewrite, and `unsafe-result-unwrap`,
 `unsafe-maybe-unwrap`, `single-use-let` and `try-around-atomic` need to
 know more about the program than the linter does.
 
@@ -145,6 +146,21 @@ forms `let` never looked at and wants the non-final ones to be `()` —
 a loud failure in place of a silent one. Comments are counted as
 comments, not body forms, so `(let [x 1] (f x) ; note` stays quiet,
 and `let-do` is never reported.
+
+`byte-offset-as-char-index` reports a byte offset used where a
+character index is expected. `String.length`, `String.index-of` and
+`String.index-of-string` answer in bytes, while `String.prefix`,
+`String.suffix` and `String.slice` index the UTF-8-decoded character
+array, so the slice lands in the wrong place as soon as one non-ASCII
+character precedes the offset, and aborts the process once the offset
+runs past the character count. It fires on the count argument of
+`String.prefix` and `String.suffix` and on either index of
+`String.slice`, when that argument is one of the three byte-answering
+calls, a name the enclosing `let` bound to one, or either with integer
+arithmetic applied. Only the `String.`-qualified spelling is matched,
+and `Pattern.find` offsets, a count that is constant by construction
+and `defndynamic` and `defmacro` bodies are left alone. The fix is
+usually `String.byte-slice`, so the rule is reported only.
 
 `leaky-top-level-use` is off by default; run it with `--only
 leaky-top-level-use`. It reports a `use` or `use-all` written at a

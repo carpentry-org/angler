@@ -570,6 +570,202 @@
     "the message names the head form")
 
   (assert-true t
+    (has-rule?
+      "(String.prefix s (String.index-of s \\%))"
+      "byte-offset-as-char-index")
+    "byte-offset-as-char-index fires on index-of feeding prefix")
+  (assert-true t
+    (has-rule? "(String.suffix s (String.length s))" "byte-offset-as-char-index")
+    "byte-offset-as-char-index fires on length feeding suffix")
+  (assert-true t
+    (has-rule?
+      "(String.slice s 0 (String.index-of-string s \"x\"))"
+      "byte-offset-as-char-index")
+    "byte-offset-as-char-index fires on the second index of slice")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (String.prefix s i))"
+      "byte-offset-as-char-index")
+    "a let binding carries the byte offset to the call site")
+  (assert-true t
+    (has-rule?
+      "(let-do [i (String.index-of s \\%)] (f) (String.suffix s i))"
+      "byte-offset-as-char-index")
+    "let-do binds the same way")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (g (h (String.prefix s i))))"
+      "byte-offset-as-char-index")
+    "the use is found however deep in the body it sits")
+  (assert-true t
+    (has-rule?
+      "(String.prefix s (Int.dec (String.index-of s \\%)))"
+      "byte-offset-as-char-index")
+    "an offset that has been adjusted arithmetically is still a byte offset")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (String.slice s 0 (Int.+ i 1)))"
+      "byte-offset-as-char-index")
+    "the arithmetic may sit between the binding and the call")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (String.prefix s (dec i)))"
+      "byte-offset-as-char-index")
+    "the bare arithmetic spellings count too")
+  (assert-equal t
+    2
+    (count-rule "(defn f [s] (String.prefix s (String.length s)))
+(defn g [s] (String.suffix s (String.length s)))" "byte-offset-as-char-index")
+    "every offending site in a file is reported")
+  (assert-equal t
+    2
+    (count-rule
+      "(defn f [s] (let [i (String.index-of s \\=)] (do (g (String.prefix s i)) (g (String.suffix s i)))))"
+      "byte-offset-as-char-index")
+    "every sink fed by one binding is reported, not just the first")
+  (assert-equal t
+    1
+    (count-rule
+      "(let [i (String.index-of s \\=)] (String.slice s i (String.index-of s \\-)))"
+      "byte-offset-as-char-index")
+    "a sink reachable both directly and through a binding is one finding")
+  (assert-equal t
+    2
+    (count-rule
+      "(let [i (String.index-of s \\=)] (String.prefix (String.suffix s i) i))"
+      "byte-offset-as-char-index")
+    "a sink nested inside a reported sink is reported too")
+  (assert-equal t
+    2
+    (count-rule
+      "(let [i (String.index-of s \\=)] (String.prefix (String.slice s i (String.index-of s \\-)) i))"
+      "byte-offset-as-char-index")
+    "a nested sink reachable both ways is still one finding each")
+  (assert-true t
+    (has-rule?
+      "(String.prefix s (String.length \"ä\"))"
+      "byte-offset-as-char-index")
+    "a literal that is not all ASCII counts more bytes than characters")
+  (assert-true t
+    (has-rule?
+      "(String.suffix s (Int.+ i (String.length \"prefix:\")))"
+      "byte-offset-as-char-index")
+    "a literal length added to an offset of unknown provenance still fires")
+
+  (assert-false t
+    (has-rule?
+      "(let [i (Pattern.find pat p)] (String.prefix p i))"
+      "byte-offset-as-char-index")
+    "a Pattern.find offset is left alone; an ASCII-only pattern makes the two spaces coincide")
+  (assert-false t
+    (has-rule?
+      "(if (= \\. (String.char-at s 0)) (String.suffix s 1) @s)"
+      "byte-offset-as-char-index")
+    "a literal count is not a byte offset")
+  (assert-false t
+    (has-rule?
+      "(String.prefix s (Int.+ 1 (String.length \"ab\")))"
+      "byte-offset-as-char-index")
+    "a constant written the long way is not a byte offset either")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length \"ab\")] (String.prefix s n))"
+      "byte-offset-as-char-index")
+    "an ASCII literal's length is a constant however it reaches the call")
+  (assert-false t
+    (has-rule? "(String.chars s)" "byte-offset-as-char-index")
+    "a call with no index at all is left alone")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length s)] (String.byte-slice s 0 n))"
+      "byte-offset-as-char-index")
+    "a byte-space-only loop is correct however much it resembles the bug")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (Array.prefix xs i))"
+      "byte-offset-as-char-index")
+    "only String's character-counting calls are sinks")
+  (assert-false t
+    (has-rule? "(String.prefix s (Array.length xs))" "byte-offset-as-char-index")
+    "a bare length is not assumed to be String.length")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length s)] (prefix bytes n))"
+      "byte-offset-as-char-index")
+    "a bare prefix is not assumed to be String.prefix; Array has one at the same arity")
+  (assert-false t
+    (has-rule?
+      "(let [n (String.length s)] (slice xs 0 n))"
+      "byte-offset-as-char-index")
+    "a bare slice is not assumed to be String.slice either")
+  (assert-false t
+    (has-rule?
+      "(let [i (index-of xs 3)] (String.prefix s i))"
+      "byte-offset-as-char-index")
+    "a bare index-of is not assumed to be String.index-of")
+  (assert-false t
+    (has-rule?
+      "(String.prefix s (Int.dec (Array.length (String.chars s))))"
+      "byte-offset-as-char-index")
+    "arithmetic on a character count stays a character count")
+  (assert-false t
+    (has-rule?
+      "(defndynamic f [s] (String.prefix s (String.index-of s \\-)))"
+      "byte-offset-as-char-index")
+    "a defndynamic body runs in the compiler, where these are dynamic builtins")
+  (assert-false t
+    (has-rule?
+      "(defmacro m [s] (String.prefix s (String.index-of s \\-)))"
+      "byte-offset-as-char-index")
+    "a defmacro body is dynamic too")
+  (assert-false t
+    (has-rule?
+      "'(String.prefix s (String.index-of s \\%))"
+      "byte-offset-as-char-index")
+    "a quoted call is data and is not reported")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\%)] (let [i 0] (String.prefix s i)))"
+      "byte-offset-as-char-index")
+    "a rebound name no longer carries the byte offset")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let [head (String.prefix s i) i 0] head))"
+      "byte-offset-as-char-index")
+    "a sink before the rebinding pair still reads the outer offset")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let-do [head (String.prefix s i) i 0] head))"
+      "byte-offset-as-char-index")
+    "let-do rebinds in sequence the same way")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let [i (String.prefix s i)] i))"
+      "byte-offset-as-char-index")
+    "the rebinding pair's own initialiser still reads the outer offset")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\=)] (let [i 0 head (String.prefix s i)] head))"
+      "byte-offset-as-char-index")
+    "a sink after the rebinding pair reads the new name")
+  (assert-true t
+    (has-rule?
+      "(let [i (String.index-of s \\=) head (String.prefix s i)] head)"
+      "byte-offset-as-char-index")
+    "a later binding in the same vector carries the byte offset")
+  (assert-false t
+    (has-rule?
+      "(let [i (String.index-of s \\=) i 0 head (String.prefix s i)] head)"
+      "byte-offset-as-char-index")
+    "a sibling that rebinds the name ends its reach in the same vector")
+  (assert-equal t
+    1
+    (count-rule
+      "(let [eq (String.index-of p \\=)] (let [k (String.prefix p eq) eq (Int.inc eq) v (String.suffix p eq)] (String.append &k &v)))"
+      "byte-offset-as-char-index")
+    "advancing by rebinding reports the sink before it, not the one after")
+
+  (assert-true t
     (has-rule? "(defn f [a b] (foo b))" "unused-defn-parameter")
     "unused-defn-parameter fires on a parameter the body never mentions")
   (assert-true t
@@ -792,9 +988,9 @@
   (assert-equal t "(use Foo)" &(fix! "(use Foo)") "a file rule has no rewrite")
 
   (assert-equal t
-    39
+    40
     (Array.length &(Lint.list-rules))
-    "36 built-ins + 3 top-level-registered test rules = 39")
+    "37 built-ins + 3 top-level-registered test rules = 40")
 
   (assert-equal t
     0
@@ -815,9 +1011,9 @@
     "disabling non-kebab-case-defn drops it")
 
   (assert-equal t
-    39
+    40
     (Array.length &(Lint.list-rules))
-    "after top-level register, 39 rules total")
+    "after top-level register, 40 rules total")
   (assert-true t
     (has-rule? "MARKER" "marker-rule")
     "newly-registered rule fires when its pattern appears")
@@ -1034,9 +1230,9 @@ w
   (assert-equal t "1:1: [lonely-do] (do x) is just x
   at: (do \"\\u0001\")" &(lint-output "(do \"\\u0001\")") "an unnamed control byte reaches the diagnostic as \\uXXXX")
   (assert-equal t
-    41
+    42
     (Array.length &(Lint.list-rules))
-    "39 previous + 2 loaded from source = 41")
+    "40 previous + 2 loaded from source = 42")
 
   (assert-equal t "x" &(fix! "(do  x )") "lonely-do fix unwraps the body")
   (assert-equal t
@@ -1509,9 +1705,9 @@ x ; tail
     &(fix! "(identity 42)")
     "loaded fixable rule rewrites via its template")
   (assert-equal t
-    42
+    43
     (Array.length &(Lint.list-rules))
-    "41 previous + 1 loaded with a template = 42")
+    "42 previous + 1 loaded with a template = 43")
 
   (assert-true t
     (match (Lint.load-rules-from-source!

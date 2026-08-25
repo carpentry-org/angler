@@ -1598,6 +1598,319 @@ skipped. Returns the number of rules loaded, or a parse error.")
             (Maybe.Nothing))
         _ (Maybe.Nothing))))
 
+  (private push-maybe!)
+  (hidden push-maybe!)
+  (defn push-maybe! [acc m]
+    (match m (Maybe.Just d) (Array.push-back acc d) (Maybe.Nothing) acc))
+
+  (private extend!)
+  (hidden extend!)
+  (defn extend! [acc others]
+    (let-do [out acc
+             n (Array.length &others)]
+      (for [i 0 n]
+        (set! out (Array.push-back out @(Array.unsafe-nth &others i))))
+      out))
+
+  (private byte-offset-head?)
+  (hidden byte-offset-head?)
+  ; only the qualified spelling: Array has all five names at the same arities
+  (defn byte-offset-head? [f]
+    (or (sym? f "String.length")
+        (or (sym? f "String.index-of") (sym? f "String.index-of-string"))))
+
+  (private arith-name?)
+  (hidden arith-name?)
+  (defn arith-name? [name]
+    (or (or (= name "+") (= name "-"))
+        (or (or (= name "*") (= name "/")) (or (= name "inc") (= name "dec")))))
+
+  (private arith-head?)
+  (hidden arith-head?)
+  ; an offset that has been adjusted arithmetically is still a byte offset
+  (defn arith-head? [f]
+    (match-ref f
+      (Form.Sym segs)
+        (let [n (Array.length segs)]
+          (and
+            (or (Int.= 1 n)
+                (and (Int.= 2 n) (= "Int" (Array.unsafe-nth segs 0))))
+            (arith-name? (Array.unsafe-nth segs (Int.dec n)))))
+      _ false))
+
+  (private ascii-str?)
+  (hidden ascii-str?)
+  (defn ascii-str? [f]
+    (match-ref f
+      (Form.Str s)
+        (let-do [ok true]
+          (for [i 0 (String.length s)]
+            (when (Int.> (Char.to-int (String.char-at s i)) 127) (set! ok false)))
+          ok)
+      _ false))
+
+  (private const-count?)
+  (hidden const-count?)
+  ; an ASCII literal counts the same in both spaces, so its length is constant
+  (defn const-count? [f]
+    (match-ref f
+      (Form.Itg _) true
+      (Form.Lst items)
+        (let [n (code-count items)]
+          (and (Int.> n 0)
+               (let [h (nth-code-form items 0)]
+                 (if (and (Int.= 2 n) (sym? h "String.length"))
+                   (ascii-str? (nth-code-form items 1))
+                   (and (arith-head? h)
+                        (let-do [ok (Int.> n 1)
+                                 i 1]
+                          (while-do (and ok (Int.< i n))
+                            (unless (const-count? (nth-code-form items i))
+                              (set! ok false))
+                            (set! i (Int.inc i)))
+                          ok))))))
+      _ false))
+
+  (private byte-offset-call?)
+  (hidden byte-offset-call?)
+  (defn byte-offset-call? [f]
+    (match-ref f
+      (Form.Lst items)
+        (let [n (code-count items)]
+          (and (Int.> n 0)
+               (let [h (nth-code-form items 0)]
+                 (if (byte-offset-head? h)
+                   true
+                   (and (arith-head? h)
+                        (let-do [hit false
+                                 i 1]
+                          (while-do (and (not hit) (Int.< i n))
+                            (when (byte-offset-call? (nth-code-form items i))
+                              (set! hit true))
+                            (set! i (Int.inc i)))
+                          hit))))))
+      _ false))
+
+  (private byte-offset-source)
+  (hidden byte-offset-source)
+  (defn byte-offset-source [f]
+    (match-ref f
+      (Form.Lst items)
+        (let [h (nth-code-form items 0)]
+          (if (byte-offset-head? h)
+            (Form.str h)
+            (let-do [out @""
+                     found false
+                     n (code-count items)
+                     i 1]
+              (while-do (and (not found) (Int.< i n))
+                (let [a (nth-code-form items i)]
+                  (when-do (byte-offset-call? a)
+                    (set! out (byte-offset-source a))
+                    (set! found true)))
+                (set! i (Int.inc i)))
+              out)))
+      _ @""))
+
+  (private char-sink)
+  (hidden char-sink)
+  ; prefix/suffix/slice index the decoded character array, so their
+  ; counts are characters
+  (defn char-sink [items]
+    (let [n (code-count items)]
+      (if (Int.= 0 n)
+        (Maybe.Nothing)
+        (let [h (nth-code-form items 0)]
+          (cond
+            (and (Int.= 3 n) (sym? h "String.prefix"))
+              (Maybe.Just @"String.prefix")
+            (and (Int.= 3 n) (sym? h "String.suffix"))
+              (Maybe.Just @"String.suffix")
+            (and (Int.= 4 n) (sym? h "String.slice"))
+              (Maybe.Just @"String.slice")
+            (Maybe.Nothing))))))
+
+  (private mixed-index-message)
+  (hidden mixed-index-message)
+  (defn mixed-index-message [sink source]
+    (fmt
+      "%s counts characters but %s answers in bytes; one non-ASCII character before the offset mis-slices, and an offset past the character count aborts — cut with String.byte-slice"
+      sink
+      source))
+
+  (private direct-mixed-index)
+  (hidden direct-mixed-index)
+  (defn direct-mixed-index [items]
+    (match (char-sink items)
+      (Maybe.Just sink)
+        (let-do [found (the (Maybe String) (Maybe.Nothing))
+                 n (code-count items)
+                 i 2]
+          (while-do (and (Maybe.nothing? &found) (Int.< i n))
+            (let [a (nth-code-form items i)]
+              (when (and (byte-offset-call? a) (not (const-count? a)))
+                (set! found
+                      (Maybe.Just
+                        (mixed-index-message &sink &(byte-offset-source a))))))
+            (set! i (Int.inc i)))
+          found)
+      (Maybe.Nothing) (Maybe.Nothing)))
+
+  (private mentions-offset?)
+  (hidden mentions-offset?)
+  (defn mentions-offset? [f name]
+    (or (sym? f name)
+        (match-ref f
+          (Form.Lst items)
+            (let [n (code-count items)]
+              (and (Int.> n 0)
+                   (and (arith-head? (nth-code-form items 0))
+                        (let-do [hit false
+                                 i 1]
+                          (while-do (and (not hit) (Int.< i n))
+                            (when (mentions-offset? (nth-code-form items i) name)
+                              (set! hit true))
+                            (set! i (Int.inc i)))
+                          hit))))
+          _ false)))
+
+  (private indexes-with?)
+  (hidden indexes-with?)
+  (defn indexes-with? [items name]
+    (let-do [hit false
+             n (code-count items)
+             i 2]
+      (while-do (and (not hit) (Int.< i n))
+        (when (mentions-offset? (nth-code-form items i) name) (set! hit true))
+        (set! i (Int.inc i)))
+      hit))
+
+  (private data-list?)
+  (hidden data-list?)
+  (defn data-list? [items]
+    (and (Int.= 2 (code-count items)) (sym? (nth-code-form items 0) "quote")))
+
+  (private dynamic-form?)
+  (hidden dynamic-form?)
+  ; a defndynamic or defmacro body runs in the compiler, where these are
+  ; dynamic builtins over the evaluator's own strings
+  (defn dynamic-form? [items]
+    (and (Int.> (code-count items) 0)
+         (let [h (nth-code-form items 0)]
+           (or (sym? h "defndynamic") (sym? h "defmacro")))))
+
+  (private rebinds?)
+  (hidden rebinds?)
+  (defn rebinds? [items name]
+    (and (Int.>= (code-count items) 2)
+         (and
+           (Maybe.just? &(let-form-head (nth-code-form items 0)))
+           (match-ref (nth-code-form items 1)
+             (Form.Arr bindings)
+               (let-do [hit false
+                        pairs (Int./ (code-count bindings) 2)]
+                 (for [k 0 pairs]
+                   (match (binding-name (nth-code-form bindings (Int.* 2 k)))
+                     (Maybe.Just other) (when (= &other name) (set! hit true))
+                     (Maybe.Nothing) ()))
+                 hit)
+             _ false))))
+
+  (private rebind-cut)
+  (hidden rebind-cut)
+  ; raw index one past the pair that rebinds `name` at or after `k`, or the end
+  (defn rebind-cut [bindings name k]
+    (let-do [at -1
+             pairs (Int./ (code-count bindings) 2)
+             j k]
+      (while-do (and (Int.< at 0) (Int.< j pairs))
+        (let [ni (Int.* 2 j)]
+          (match (binding-name (nth-code-form bindings ni))
+            (Maybe.Just other)
+              (when (= &other name) (set! at (code-from bindings (Int.+ ni 2))))
+            (Maybe.Nothing) ()))
+        (set! j (Int.inc j)))
+      (if (Int.< at 0) (Array.length bindings) at)))
+
+  (private mixed-index-uses)
+  (hidden mixed-index-uses)
+  ; every character-counting call under `items` indexed with `name`
+  (defn mixed-index-uses [items name source from to]
+    (let-do [acc (the (Array Diagnostic) [])
+             i from
+             n (if (Int.< to 0) (Array.length items) to)]
+      (while-do (Int.< i n)
+        (let [l (nth-located items i)]
+          (match-ref (Located.form l)
+            (Form.Lst kids)
+              (unless-do (or (data-list? kids) (dynamic-form? kids))
+                (match (char-sink kids)
+                  (Maybe.Just sink)
+                    (when (indexes-with? kids name)
+                      (set! acc
+                            (push-maybe! acc
+                                         (dx (Located.info l)
+                                             "byte-offset-as-char-index"
+                                             &(mixed-index-message &sink source)
+                                             (Form.str (Located.form l))))))
+                  (Maybe.Nothing) ())
+                (if (rebinds? kids name)
+                  (match-ref (nth-code-form kids 1)
+                    (Form.Arr bs)
+                      (set! acc
+                            (extend! acc
+                                     (mixed-index-uses bs
+                                                       name
+                                                       source
+                                                       0
+                                                       (rebind-cut bs name 0))))
+                    _ ())
+                  (set! acc
+                        (extend! acc (mixed-index-uses kids name source 0 -1)))))
+            (Form.Arr kids)
+              (set! acc (extend! acc (mixed-index-uses kids name source 0 -1)))
+            (Form.StaticArr kids)
+              (set! acc (extend! acc (mixed-index-uses kids name source 0 -1)))
+            (Form.Dict kids)
+              (set! acc (extend! acc (mixed-index-uses kids name source 0 -1)))
+            _ ()))
+        (set! i (Int.inc i)))
+      acc))
+
+  (private let-bound-mixed-index)
+  (hidden let-bound-mixed-index)
+  (defn let-bound-mixed-index [items bindings]
+    (let-do [acc (the (Array Diagnostic) [])
+             pairs (Int./ (code-count bindings) 2)
+             k 0]
+      (while-do (Int.< k pairs)
+        (let [ni (Int.* 2 k)
+              init (nth-code-form bindings (Int.inc ni))]
+          (when (and (byte-offset-call? init) (not (const-count? init)))
+            (match (binding-name (nth-code-form bindings ni))
+              (Maybe.Just name)
+                (let-do [source (byte-offset-source init)]
+                  (set! acc
+                        (extend! acc
+                                 (mixed-index-uses bindings
+                                                   &name
+                                                   &source
+                                                   (code-from bindings
+                                                              (Int.+ ni 2))
+                                                   (rebind-cut bindings
+                                                               &name
+                                                               (Int.inc k)))))
+                  (set! acc
+                        (extend! acc
+                                 (mixed-index-uses items
+                                                   &name
+                                                   &source
+                                                   (code-from items 2)
+                                                   -1))))
+              (Maybe.Nothing) ())))
+        (set! k (Int.inc k)))
+      acc))
+
   (private rule-redundant-do-in-do-variant)
   (hidden rule-redundant-do-in-do-variant)
   (defn rule-redundant-do-in-do-variant [l]
@@ -1646,20 +1959,6 @@ skipped. Returns the number of rules loaded, or a parse error.")
             _ (Maybe.Nothing))
           (Maybe.Nothing))
       _ (Maybe.Nothing)))
-
-  (private push-maybe!)
-  (hidden push-maybe!)
-  (defn push-maybe! [acc m]
-    (match m (Maybe.Just d) (Array.push-back acc d) (Maybe.Nothing) acc))
-
-  (private extend!)
-  (hidden extend!)
-  (defn extend! [acc others]
-    (let-do [out acc
-             n (Array.length &others)]
-      (for [i 0 n]
-        (set! out (Array.push-back out @(Array.unsafe-nth &others i))))
-      out))
 
   (private use-form?)
   (hidden use-form?)
@@ -1721,6 +2020,74 @@ skipped. Returns the number of rules loaded, or a parse error.")
         (when (main-defn? (Located.form (Box.peek (Array.unsafe-nth forms i))))
           (set! found true)))
       (or found (has-test-marker? forms))))
+
+  (private node-mixed-index)
+  (hidden node-mixed-index)
+  (defn node-mixed-index [l items]
+    (match (direct-mixed-index items)
+      (Maybe.Just msg)
+        (push-maybe! (the (Array Diagnostic) [])
+                     (dx (Located.info l)
+                         "byte-offset-as-char-index"
+                         &msg
+                         (Form.str (Located.form l))))
+      (Maybe.Nothing)
+        (if (Int.< (code-count items) 3)
+          (the (Array Diagnostic) [])
+          (match (let-form-head (nth-code-form items 0))
+            (Maybe.Just _)
+              (match-ref (nth-code-form items 1)
+                (Form.Arr bindings)
+                  (let [n (code-count bindings)]
+                    (if (Int.= n (Int.* 2 (Int./ n 2)))
+                      (let-bound-mixed-index items bindings)
+                      (the (Array Diagnostic) [])))
+                _ (the (Array Diagnostic) []))
+            (Maybe.Nothing) (the (Array Diagnostic) [])))))
+
+  (private same-site?)
+  (hidden same-site?)
+  (defn same-site? [a b]
+    (and
+      (Int.= @(Diagnostic.line a) @(Diagnostic.line b))
+      (Int.= @(Diagnostic.col a) @(Diagnostic.col b))))
+
+  (private dedupe-sites)
+  (hidden dedupe-sites)
+  ; a sink reachable both directly and through a binding is one finding
+  (defn dedupe-sites [ds]
+    (let-do [out (the (Array Diagnostic) [])]
+      (for [i 0 (Array.length &ds)]
+        (let-do [d (Array.unsafe-nth &ds i)
+                 seen false]
+          (for [j 0 (Array.length &out)]
+            (when (same-site? (Array.unsafe-nth &out j) d) (set! seen true)))
+          (unless seen (set! out (Array.push-back out @d)))))
+      out))
+
+  (private mixed-index-scan)
+  (hidden mixed-index-scan)
+  (defn mixed-index-scan [forms]
+    (let-do [acc (the (Array Diagnostic) [])
+             n (Array.length forms)]
+      (for [i 0 n]
+        (let [l (nth-located forms i)]
+          (match-ref (Located.form l)
+            (Form.Lst items)
+              (unless-do (or (data-list? items) (dynamic-form? items))
+                (set! acc (extend! acc (node-mixed-index l items)))
+                (set! acc (extend! acc (mixed-index-scan items))))
+            (Form.Arr items) (set! acc (extend! acc (mixed-index-scan items)))
+            (Form.StaticArr items)
+              (set! acc (extend! acc (mixed-index-scan items)))
+            (Form.Dict items) (set! acc (extend! acc (mixed-index-scan items)))
+            _ ())))
+      acc))
+
+  (private rule-byte-offset-as-char-index)
+  (hidden rule-byte-offset-as-char-index)
+  (defn rule-byte-offset-as-char-index [forms]
+    (dedupe-sites (mixed-index-scan forms)))
 
   (private rule-leaky-top-level-use)
   (hidden rule-leaky-top-level-use)
@@ -2338,6 +2705,9 @@ rule names satisfy `keep?`.")
       (register-rule! @"unused-defn-parameter"
                       @"a defn/defn- parameter that the body never mentions"
                       rule-unused-defn-parameter)
+      (register-file-rule! @"byte-offset-as-char-index"
+                           @"a byte offset from String.length/index-of used where a character index is expected"
+                           rule-byte-offset-as-char-index)
       (register-rule! @"discarded-let-body"
                       @"a let whose body has more than one form; only the first runs"
                       rule-discarded-let-body)
