@@ -148,57 +148,19 @@ comments, not body forms, so `(let [x 1] (f x) ; note` stays quiet,
 and `let-do` is never reported.
 
 `byte-offset-as-char-index` reports a byte offset used where a
-character index is expected. Core's `String` mixes two index spaces:
-`String.length` is `strlen` and `String.index-of` and
+character index is expected. `String.length`, `String.index-of` and
 `String.index-of-string` answer in bytes, while `String.prefix`,
 `String.suffix` and `String.slice` index the UTF-8-decoded character
-array. Feed an offset from the first group into the second and the
-slice lands in the wrong place as soon as one non-ASCII character
-precedes it; run the offset past the character count and
-`Array.slice`'s `unsafe-nth` aborts the process. The rule fires on the
-count argument of `String.prefix` and `String.suffix` and on either
-index of `String.slice`, when that argument is a call to one of the
-three byte-answering functions, a name the enclosing `let` or `let-do`
-bound to one, or either of those with integer arithmetic applied —
-`(String.prefix s (Int.dec i))` cuts in the same wrong space as
-`(String.prefix s i)`. Every offending call under a binding is
-reported, not just the first, including one nested inside another.
-`let` binds in sequence, so a rebinding of the name ends its reach at
-that pair: an initialiser earlier in the same vector, and the
-rebinding pair's own initialiser, still read the outer name, while the
-rest of the vector and the body do not. What the rebinding itself
-carries is not followed — `(let [i (Int.inc i)] (String.prefix s i))`
-is silent even though the new `i` is the old offset. The fix is
-usually `String.byte-slice`, which matches the index to the cut, so
-the rule is reported only — sometimes the answer is to redesign the
-scan in one space or the other.
-
-An offset from `Pattern.find` is deliberately not reported. It is a
-byte offset too, but a pattern that can only match ASCII makes the byte
-and character offsets coincide, and that is what the calls in the wild
-look like — `semver.carp:25` is one, and reporting it would turn a
-green repository red for no defect. The boundary is the design: the
-rule reports the sources that are wrong whatever the pattern, and
-leaves the one whose safety depends on it.
-
-`String.length` of an all-ASCII string literal is left alone on the
-same reasoning: its byte count and its character count are the same
-number, so `(String.prefix s (Int.+ 1 (String.length "ab")))` is a
-constant written the long way. Only the constant is exempt — a literal
-with a non-ASCII byte in it, and a literal length added to an offset
-the rule cannot see the provenance of, are both still reported.
-
-`defndynamic` and `defmacro` bodies are left out. They run in the
-compiler, where `String.prefix` and `String.index-of` are dynamic
-builtins over the evaluator's own strings rather than the core
-functions this rule is about.
-
-Only the `String.`-qualified spelling is matched, on the sink and on
-the source. `Array` has `length`, `index-of`, `prefix`, `suffix` and
-`slice` at the same arities, so a bare name in a `use Array` file would
-be reported under a `String.` name it never called — and a finding that
-names the wrong function is worse than one that misses the `use String`
-call site.
+array, so the slice lands in the wrong place as soon as one non-ASCII
+character precedes the offset, and aborts the process once the offset
+runs past the character count. It fires on the count argument of
+`String.prefix` and `String.suffix` and on either index of
+`String.slice`, when that argument is one of the three byte-answering
+calls, a name the enclosing `let` bound to one, or either with integer
+arithmetic applied. Only the `String.`-qualified spelling is matched,
+and `Pattern.find` offsets, a count that is constant by construction
+and `defndynamic` and `defmacro` bodies are left alone. The fix is
+usually `String.byte-slice`, so the rule is reported only.
 
 `leaky-top-level-use` is off by default; run it with `--only
 leaky-top-level-use`. It reports a `use` or `use-all` written at a

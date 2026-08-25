@@ -9,15 +9,8 @@ the project follows [Semantic Versioning](https://semver.org/).
   `String.length`, `String.index-of` or `String.index-of-string` passed
   where `String.prefix`, `String.suffix` or `String.slice` wants a
   character index — directly, through a `let` binding, or with integer
-  arithmetic applied on the way. Mixing the two index spaces returns the
-  wrong text as soon as one non-ASCII character precedes the offset, and
-  an offset past the character count aborts the process. It is reported
-  only; the fix is usually `String.byte-slice`, and sometimes a redesign.
-  Only the `String.`-qualified spelling is matched, because `Array` has
-  same-arity counterparts for all six names. An offset from
-  `Pattern.find` is deliberately not reported, and neither is a count
-  that is constant by construction, such as `String.length` of an
-  all-ASCII string literal.
+  arithmetic applied. Only the `String.`-qualified spelling is matched.
+  It is reported only; the fix is usually `String.byte-slice`.
 - The deliberate-discard marker for `unused-let-binding`,
   `shadowed-let-binding` and `unused-defn-parameter` is a leading `-`
   rather than a leading `_`. A leading `_` is still honoured, so nothing
