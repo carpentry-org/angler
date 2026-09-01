@@ -276,7 +276,7 @@ programmatically. The two public entry points are `Lint.lint-source`, which pars
 `&(Array (Box Form))`.
 
 ```clojure
-(load "git@github.com:carpentry-org/angler@0.5.1")
+(load "git@github.com:carpentry-org/angler@0.6.0")
 
 (match (Lint.lint-source "(do x)")
   (Result.Success diags)

@@ -3,7 +3,7 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [0.6.0]
 
 - New rule `byte-offset-as-char-index`: a byte offset from
   `String.length`, `String.index-of` or `String.index-of-string` passed

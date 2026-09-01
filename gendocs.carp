@@ -17,7 +17,7 @@ consumers. See
 [the documentation on writing rules](https://github.com/carpentry-org/angler#using-it-as-a-library).
 
 ```
-(load \"git@github.com:carpentry-org/angler@0.5.1\")
+(load \"git@github.com:carpentry-org/angler@0.6.0\")
 
 (match (Lint.lint-source \"(do x)\")
   (Result.Success diags) (for [i 0 (Array.length &diags)]
