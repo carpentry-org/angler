@@ -3,6 +3,11 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project follows [Semantic Versioning](https://semver.org/).
 
+## [0.6.1]
+
+- carp-reader bumped to 0.4.3, which follows core's rename of `format` to
+  `unsafe-format`. angler builds again on a Carp that carries the rename.
+
 ## [0.6.0]
 
 - New rule `byte-offset-as-char-index`: a byte offset from
